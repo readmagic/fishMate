@@ -1,0 +1,43 @@
+{
+  "name": "fishmate",
+  "version": "1.0.0",
+  "description": "闲鱼智能管家",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "author": "Frandy",
+  "license": "ISC",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "dist": "electron-vite build && electron-builder",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "clean": "node -e \"const fs=require('fs');['dist','release'].forEach(d=>{if(fs.existsSync(d))fs.rmSync(d,{recursive:true,force:true})});console.log('Cleaned: dist, release')\""
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "better-sqlite3": "^12.5.0",
+    "dayjs": "^1.11.13",
+    "openai": "^6.15.0",
+    "pinia": "^3.0.0",
+    "simple-mind-map": "^0.14.0-fix.2",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.2",
+    "@types/ws": "^8.5.13",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^4.0.0",
+    "typescript": "~5.9.2",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.2.0"
+  }
+}
