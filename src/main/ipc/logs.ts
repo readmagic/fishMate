@@ -3,13 +3,15 @@ import fs from 'fs'
 import path from 'path'
 import { getDataDir } from '../shared/core/paths.js'
 
-const logsDir = path.join(getDataDir(), 'logs')
+// 延迟计算：模块加载早于 bootstrap 设置 GOOFISH_DATA_DIR，必须函数式取值
+const logsDir = () => path.join(getDataDir(), 'logs')
 
 export function registerLogIPC() {
     ipcMain.handle('logs:dates', async () => {
         try {
-            if (!fs.existsSync(logsDir)) return { dates: [] }
-            const entries = fs.readdirSync(logsDir, { withFileTypes: true })
+            const dir = logsDir()
+            if (!fs.existsSync(dir)) return { dates: [] }
+            const entries = fs.readdirSync(dir, { withFileTypes: true })
             const dates = entries
                 .filter((e) => e.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(e.name))
                 .map((e) => e.name)
@@ -22,7 +24,7 @@ export function registerLogIPC() {
 
     ipcMain.handle('logs:files', async (_e, { date }) => {
         try {
-            const dayDir = path.join(logsDir, date)
+            const dayDir = path.join(logsDir(), date)
             if (!fs.existsSync(dayDir)) return { files: [] }
             const files = fs
                 .readdirSync(dayDir)
@@ -40,7 +42,7 @@ export function registerLogIPC() {
 
     ipcMain.handle('logs:content', async (_e, { date, file, level, limit = 500 }) => {
         try {
-            const filePath = path.join(logsDir, date, file)
+            const filePath = path.join(logsDir(), date, file)
             if (!fs.existsSync(filePath)) return { error: '日志文件不存在' }
             const content = fs.readFileSync(filePath, 'utf-8')
             let lines = content.split('\n').filter((l) => l.trim())
@@ -60,7 +62,7 @@ export function registerLogIPC() {
         try {
             const now = new Date()
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-            const dayDir = path.join(logsDir, dateStr)
+            const dayDir = path.join(logsDir(), dateStr)
             if (!fs.existsSync(dayDir)) return { lines: [], total: 0, file: null }
             const files = fs
                 .readdirSync(dayDir)
