@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { createLogger } from './shared/core/logger.js'
+import { getAutoLaunch, setAutoLaunch } from './shared/core/autostart.js'
 import { startBackend, shutdownBackend } from './backend.js'
 import { registerAllIPC } from './ipc/index.js'
 import { clearPushSubscription } from './ipc/push.js'
@@ -146,13 +147,10 @@ function registerWindowControls() {
   ipcMain.handle('window:isMaximized', () => !!mainWindow?.isMaximized())
 }
 
-// 开机自启：读写系统登录项
+// 开机自启：读写系统登录项（Linux 走 .desktop，Win/macOS 走原生 API）
 function registerAppSettings() {
-  ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin)
-  ipcMain.handle('autostart:set', (_e, { enabled }: { enabled: boolean }) => {
-    app.setLoginItemSettings({ openAtLogin: enabled })
-    return app.getLoginItemSettings().openAtLogin
-  })
+  ipcMain.handle('autostart:get', () => getAutoLaunch())
+  ipcMain.handle('autostart:set', (_e, { enabled }: { enabled: boolean }) => setAutoLaunch(enabled))
 }
 
 function createWindow() {
