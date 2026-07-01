@@ -138,6 +138,14 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             }
         }
 
+        // 从 reminderUrl 提取会话绑定的商品ID
+        // 深链形如 fleamarket://message_chat?itemId=xxx&peerUserId=yyy&sid=chatId
+        let itemId: string | undefined
+        if (msg10.reminderUrl) {
+            const itemMatch = msg10.reminderUrl.match(/[?&]itemId=(\d+)/)
+            if (itemMatch) itemId = itemMatch[1]
+        }
+
         // 从消息内容的 dxCard/tip 中提取订单ID（备用方案）
         if (!orderId) {
             try {
@@ -233,7 +241,8 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             raw: message,
             orderId,
             orderStatus,
-            isOrderMessage
+            isOrderMessage,
+            itemId
         }
     } catch (e) {
         logger.error(`提取聊天消息失败: ${e}`)

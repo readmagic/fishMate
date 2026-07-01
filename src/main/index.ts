@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, shell, session } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, shell, session, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -42,6 +42,12 @@ let tray: Tray | null = null
 let trayIcon: Electron.NativeImage | null = null
 let isQuitting = false
 let flashTimer: NodeJS.Timeout | null = null
+let inChatView = false // 渲染层当前是否在对话消息页（聚焦时新消息不闪烁）
+
+ipcMain.handle('message:setInChat', (_e, { inChat }: { inChat: boolean }) => {
+  inChatView = inChat
+  return true
+})
 
 function resolveTrayIconPath() {
   // dev: dist/main → src/renderer/public/tray-logo.png
@@ -53,17 +59,20 @@ function resolveTrayIconPath() {
 
 function createTray() {
   if (tray) return
-  trayIcon = nativeImage.createFromPath(resolveTrayIconPath()).resize({ width: 22, height: 22 })
+  trayIcon = nativeImage.createFromPath(resolveTrayIconPath()).resize({ width: 32, height: 32 })
   tray = new Tray(trayIcon)
   tray.setToolTip('fishMate')
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: '显示主窗口', click: showWindow },
-      { type: 'separator' },
-      { label: '退出', click: () => app.quit() }
-    ])
-  )
-  tray.on('click', showWindow)
+  const contextMenu = Menu.buildFromTemplate([
+    { label: '显示主窗口', click: showWindow },
+    { type: 'separator' },
+    { label: '退出', click: () => app.quit() }
+  ])
+  tray.setContextMenu(contextMenu)
+  // 左键单击：有未读闪烁消息时直接显示窗口（showWindow 内部负责跳转对话页），否则弹出菜单
+  tray.on('click', () => {
+    if (flashTimer) showWindow()
+    else tray?.popUpContextMenu(contextMenu)
+  })
 
   // 收到新对话消息 → 托盘闪烁；窗口显示/聚焦后自动停止
   appEvents.on(Events.NEW_MESSAGE, startFlashing)
@@ -71,6 +80,8 @@ function createTray() {
 
 function startFlashing() {
   if (flashTimer || !tray || !trayIcon) return
+  // 正在聊天界面且窗口可见聚焦时，用户已能实时看到新消息，不打扰
+  if (inChatView && mainWindow && mainWindow.isVisible() && mainWindow.isFocused()) return
   const emptyIcon = nativeImage.createEmpty()
   let on = false
   flashTimer = setInterval(() => {
@@ -88,13 +99,20 @@ function stopFlashing() {
 }
 
 function showWindow() {
+  // 在 show() 触发 stopFlashing 之前捕获未读状态，用于跳转对话页
+  const wasFlashing = !!flashTimer
   if (!mainWindow) {
     createWindow()
+    if (wasFlashing) {
+      mainWindow?.webContents.once('dom-ready', () =>
+        mainWindow?.webContents.send('navigate:route', '/conversations'))
+    }
     return
   }
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+  if (wasFlashing) mainWindow.webContents.send('navigate:route', '/conversations')
 }
 
 async function bootstrap() {
@@ -105,9 +123,33 @@ async function bootstrap() {
 
   const cm = await startBackend()
   registerAllIPC(cm)
+  registerWindowControls()
+  registerAppSettings()
 
   createWindow()
   createTray()
+}
+
+// 自定义标题栏窗口控制（frameless 窗口的最小化/最大化/关闭）
+function registerWindowControls() {
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize())
+  ipcMain.handle('window:maximize', () => {
+    if (!mainWindow) return false
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return mainWindow.isMaximized()
+  })
+  ipcMain.handle('window:close', () => mainWindow?.close())
+  ipcMain.handle('window:isMaximized', () => !!mainWindow?.isMaximized())
+}
+
+// 开机自启：读写系统登录项
+function registerAppSettings() {
+  ipcMain.handle('autostart:get', () => app.getLoginItemSettings().openAtLogin)
+  ipcMain.handle('autostart:set', (_e, { enabled }: { enabled: boolean }) => {
+    app.setLoginItemSettings({ openAtLogin: enabled })
+    return app.getLoginItemSettings().openAtLogin
+  })
 }
 
 function createWindow() {
@@ -115,7 +157,9 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'fishMate',
+    frame: false,
     autoHideMenuBar: true,
+    backgroundColor: '#f5f5f5',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
@@ -123,6 +167,11 @@ function createWindow() {
       webviewTag: true
     }
   })
+
+  // 自定义标题栏：窗口最大化状态变化时通知渲染层切换图标
+  const emitMaxState = () => mainWindow?.webContents.send('window:maximizeChange', !!mainWindow?.isMaximized())
+  mainWindow.on('maximize', emitMaxState)
+  mainWindow.on('unmaximize', emitMaxState)
 
   // 外部链接用系统浏览器打开
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

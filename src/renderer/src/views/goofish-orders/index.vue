@@ -352,7 +352,14 @@ onUnmounted(() => {
     </template>
   </TwoPaneLayout>
 
-  <a-modal v-model:open="manualVisible" title="手动获取订单" @ok="fetchManualOrder" :confirm-loading="fetching">
+  <a-modal
+    v-model:open="manualVisible"
+    title="手动获取订单"
+    ok-text="确定"
+    cancel-text="取消"
+    :confirm-loading="fetching"
+    @ok="fetchManualOrder"
+  >
     <a-space direction="vertical" style="width: 100%">
       <a-select v-model:value="manualAccountId" style="width: 100%" placeholder="选择账号">
         <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
@@ -376,7 +383,8 @@ onUnmounted(() => {
   padding: 10px 12px;
   border-bottom: 1px solid var(--wm-border);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .list-meta {
   padding: 6px 12px;

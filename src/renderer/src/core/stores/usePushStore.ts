@@ -8,6 +8,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import type { Order, Account, Conversation } from '@/core/types'
+import { useGoodsStore } from './useGoodsStore'
 
 export interface OrdersUpdate {
   orders: Order[]
@@ -38,6 +39,9 @@ export const usePushStore = defineStore('push', () => {
   const conversations = ref<Conversation[]>([])
   const conversationsTotal = ref(0)
 
+  // 记录上一轮各账号在线状态，用于检测"刚上线/刚离线"过渡
+  const prevConnected = new Set<string>()
+
   let unsub: (() => void) | null = null
   const subscribed = new Set<string>()
 
@@ -55,6 +59,20 @@ export const usePushStore = defineStore('push', () => {
           const d = data as AccountsUpdate
           accounts.value = d.accounts
           clients.value = d.clients
+          // 账号上线 → 预拉商品信息初始化缓存；离线 → 清空缓存下次重拉
+          const goodsStore = useGoodsStore()
+          const nowConnected = new Set<string>()
+          for (const c of d.clients) {
+            if (c.connected) nowConnected.add(c.accountId)
+          }
+          for (const id of nowConnected) {
+            if (!prevConnected.has(id)) goodsStore.ensureAccountGoods(id)
+          }
+          for (const id of prevConnected) {
+            if (!nowConnected.has(id)) goodsStore.clear(id)
+          }
+          prevConnected.clear()
+          for (const id of nowConnected) prevConnected.add(id)
           break
         }
         case 'conversations': {

@@ -20,5 +20,11 @@ export const settingsService = {
   },
   getDefaultPrompt() {
     return invoke<{ prompt: string }>('autoreply:ai:defaultPrompt')
+  },
+  getAutoStart() {
+    return invoke<boolean>('autostart:get')
+  },
+  setAutoStart(enabled: boolean) {
+    return invoke<boolean>('autostart:set', { enabled })
   }
 }

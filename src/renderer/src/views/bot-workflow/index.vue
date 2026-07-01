@@ -448,7 +448,6 @@ loadWorkflows()
 <template>
   <div class="workflow-page">
     <div class="page-header">
-      <h2 class="page-title">发货流程</h2>
       <a-button v-if="!editingWorkflow" type="primary" @click="createWorkflow">
         <template #icon><PlusOutlined /></template>
         新建流程

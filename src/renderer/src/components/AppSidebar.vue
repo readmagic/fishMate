@@ -14,7 +14,6 @@ import {
   FileTextOutlined,
   SettingOutlined
 } from '@ant-design/icons-vue'
-import logoUrl from '@/assets/logo.png'
 import { usePushStore } from '@/core/stores/usePushStore'
 
 const router = useRouter()
@@ -37,17 +36,18 @@ interface MenuItem {
 const flatItems: MenuItem[] = [
   { key: '/dashboard', label: '仪表盘', icon: DashboardOutlined },
   { key: '/accounts', label: '账号管理', icon: UserOutlined },
-  { key: '/goods', label: '商品管理', icon: ProfileOutlined },
-  { key: '/orders', label: '订单管理', icon: ShoppingCartOutlined },
   { key: '/conversations', label: '对话消息', icon: MessageOutlined },
-  { key: '/autosell', label: '自动发货', icon: CloudUploadOutlined },
-  { key: '/workflow', label: '发货流程', icon: ApartmentOutlined },
-  { key: '/autoreply', label: '自动回复', icon: RobotOutlined },
+  { key: '/goods', label: '商品管理', icon: ProfileOutlined },
+  // TODO: 订单/自动发货/发货流程/自动回复 模块暂不启用，待订单列表 API 打通后恢复
+  // { key: '/orders', label: '订单管理', icon: ShoppingCartOutlined },
+  // { key: '/autosell', label: '自动发货', icon: CloudUploadOutlined },
+  // { key: '/workflow', label: '发货流程', icon: ApartmentOutlined },
+  // { key: '/autoreply', label: '自动回复', icon: RobotOutlined },
   { key: '/logs', label: '系统日志', icon: FileTextOutlined }
 ]
 
-// 组间分隔：仪表盘后(0) / 4个业务页后(4) / 3个机器人页后(7)
-const separators = [0, 4, 7]
+// 组间分隔：仪表盘后(0) / 业务页后(3，系统日志前)
+const separators = [0, 3]
 
 const activeKey = computed(() => route.path)
 
@@ -62,9 +62,6 @@ function go(key: string) {
 
 <template>
   <nav class="wm-rail">
-    <div class="wm-rail-logo">
-      <img :src="logoUrl" alt="fishMate" />
-    </div>
     <div class="wm-rail-items">
       <template v-for="(item, i) in flatItems" :key="item.key">
         <ATooltip :title="item.label" placement="right">
@@ -92,23 +89,18 @@ function go(key: string) {
 .wm-rail {
   position: fixed;
   left: 0;
-  top: 0;
+  top: var(--wm-titlebar-height);
   bottom: 0;
   z-index: 20;
   width: var(--wm-rail-width);
   background: var(--wm-rail-bg);
+  border-right: 1px solid var(--wm-border);
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 10px 0;
 }
-.wm-rail-logo img {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  object-fit: contain;
-}
+
 .wm-rail-items {
   flex: 1;
   display: flex;
@@ -124,8 +116,8 @@ function go(key: string) {
   align-items: center;
   justify-content: center;
   color: var(--wm-rail-icon);
-  font-size: 20px;
-  border-radius: 8px;
+  font-size: 24px;
+  border-radius: var(--wm-radius-item);
   cursor: pointer;
   margin: 2px 0;
   position: relative;
@@ -137,17 +129,7 @@ function go(key: string) {
 }
 .wm-rail-item.active {
   background: var(--wm-rail-active-bg);
-  color: var(--wm-rail-icon-hover);
-}
-.wm-rail-item.active::before {
-  content: '';
-  position: absolute;
-  left: -10px;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  background: var(--wm-primary);
-  border-radius: 0 2px 2px 0;
+  color: var(--wm-rail-icon-active);
 }
 .wm-rail-badge {
   position: absolute;
@@ -169,8 +151,8 @@ function go(key: string) {
 .wm-rail-sep {
   width: 28px;
   height: 1px;
-  background: rgba(255, 255, 255, 0.12);
-  margin: 6px 0;
+  background: var(--wm-rail-sep);
+  margin: 8px 0;
 }
 .wm-rail-bottom {
   width: 100%;

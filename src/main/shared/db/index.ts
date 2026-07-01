@@ -39,6 +39,8 @@ export {
     upsertConversation,
     updateConversationAvatar,
     markConversationRead,
+    deleteConversation,
+    setConversationHidden,
     getConversationMessages,
     getConversationMessageCount,
     addConversationMessage

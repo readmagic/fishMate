@@ -83,6 +83,9 @@ function createConversationTables() {
   `)
 
   safeAddColumn('conversations', 'account_id', "TEXT DEFAULT ''")
+  safeAddColumn('conversations', 'hidden', 'INTEGER DEFAULT 0')
+  // 会话绑定的商品ID（从消息 reminderUrl 深链提取）
+  safeAddColumn('conversations', 'item_id', 'TEXT')
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversation_messages (

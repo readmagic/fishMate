@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import { message, Modal } from 'ant-design-vue'
+import { ReloadOutlined, SendOutlined } from '@ant-design/icons-vue'
 import { conversationService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
+import { useGoodsStore } from '@/core/stores/useGoodsStore'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
-import type { Conversation } from '@/core/types'
+import type { Conversation, ConversationMessage, GoodsItem } from '@/core/types'
 
 const pushStore = usePushStore()
 
@@ -20,7 +22,33 @@ const loadingMoreMessages = ref(false)
 const hasMoreMessages = ref(true)
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
+const draft = ref('')
+const sending = ref(false)
 let wsSubscribed = false
+
+// 会话绑定商品的匹配展示：按 selected.itemId 在本账号商品列表里查标题/主图
+const goodsStore = useGoodsStore()
+const matchedItem = ref<GoodsItem | null>(null)
+const itemLoading = ref(false)
+
+async function loadMatchedItem() {
+  const conv = selected.value
+  const itemId = conv?.itemId
+  if (!conv || !itemId) {
+    matchedItem.value = null
+    return
+  }
+  itemLoading.value = true
+  try {
+    // 复用全局商品缓存（账号上线时已预拉，命中则即时返回）
+    const goods = await goodsStore.ensureAccountGoods(conv.accountId)
+    matchedItem.value = goods.find((g) => g.id === itemId) || null
+  } catch {
+    matchedItem.value = null
+  } finally {
+    itemLoading.value = false
+  }
+}
 
 function scrollToBottom() {
   const el = messagesContainer.value
@@ -127,6 +155,91 @@ function isActiveConv(conv: Conversation) {
   return selected.value?.accountId === conv.accountId && selected.value?.chatId === conv.chatId
 }
 
+// 选中会话或其 itemId 变化时，匹配对应商品
+watch(() => selected.value?.itemId, () => loadMatchedItem())
+
+function onContextMenu(key: string, conv: Conversation) {
+  if (key === 'hide') hideConv(conv)
+  else if (key === 'delete') confirmDelete(conv)
+}
+
+async function hideConv(conv: Conversation) {
+  try {
+    await conversationService.setHidden(conv.accountId, conv.chatId, true)
+    conversations.value = conversations.value.filter(
+      (c) => !(c.accountId === conv.accountId && c.chatId === conv.chatId)
+    )
+    if (selected.value?.accountId === conv.accountId && selected.value?.chatId === conv.chatId) {
+      selected.value = null
+    }
+    total.value = Math.max(0, total.value - 1)
+    message.success('已隐藏')
+  } catch {
+    message.error('操作失败')
+  }
+}
+
+function confirmDelete(conv: Conversation) {
+  Modal.confirm({
+    title: '删除对话',
+    content: `确定删除与 ${conv.userName} 的对话？所有消息将一并删除，且无法恢复。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: async () => {
+      try {
+        await conversationService.deleteConversation(conv.accountId, conv.chatId)
+        conversations.value = conversations.value.filter(
+          (c) => !(c.accountId === conv.accountId && c.chatId === conv.chatId)
+        )
+        if (selected.value?.accountId === conv.accountId && selected.value?.chatId === conv.chatId) {
+          selected.value = null
+        }
+        total.value = Math.max(0, total.value - 1)
+        message.success('已删除')
+      } catch {
+        message.error('删除失败')
+      }
+    }
+  })
+}
+
+async function send() {
+  const text = draft.value.trim()
+  const conv = selected.value
+  if (!text || !conv) return
+  sending.value = true
+  try {
+    const res = await conversationService.sendMessage(conv.accountId, conv.chatId, conv.userId, text)
+    if (res.success) {
+      // 乐观追加到本地消息列表
+      const now = new Date()
+      const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+      const outMsg: ConversationMessage = {
+        id: Date.now(),
+        senderId: 'me',
+        senderName: '我',
+        content: text,
+        msgTime: ts,
+        timestamp: Date.now(),
+        direction: 'out'
+      }
+      conv.messages = [...(conv.messages || []), outMsg]
+      conv.lastMessage = text
+      conv.lastTime = Date.now()
+      draft.value = ''
+      await nextTick()
+      scrollToBottom()
+    } else {
+      message.error(res.error || '发送失败')
+    }
+  } catch {
+    message.error('发送失败')
+  } finally {
+    sending.value = false
+  }
+}
+
 function formatTime(ts: number) {
   if (!ts) return ''
   const d = new Date(ts)
@@ -137,10 +250,14 @@ function formatTime(ts: number) {
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
-onMounted(loadConversations)
+onMounted(() => {
+  loadConversations()
+  conversationService.setInChat(true)
+})
 onUnmounted(() => {
   // 不取消订阅：AppSidebar 全局常驻订阅供未读角标，此处仅重置本地 flag
   wsSubscribed = false
+  conversationService.setInChat(false)
 })
 </script>
 
@@ -157,25 +274,35 @@ onUnmounted(() => {
         <a-spin :spinning="loading">
           <a-empty v-if="conversations.length === 0" description="暂无对话消息" />
           <div v-else class="conv-list">
-            <div
+            <a-dropdown
               v-for="conv in conversations"
               :key="conv.accountId + conv.chatId"
-              class="conv-item"
-              :class="{ active: isActiveConv(conv) }"
-              @click="openConversation(conv)"
+              trigger="contextmenu"
             >
-              <a-avatar v-if="conv.userAvatar" :src="conv.userAvatar" />
-              <a-avatar v-else>{{ conv.userName.charAt(0) }}</a-avatar>
-              <div class="conv-meta">
-                <div class="conv-top">
-                  <span class="conv-name">{{ conv.userName }}</span>
-                  <a-tag color="default">{{ conv.accountNickname }}</a-tag>
-                  <span class="conv-time">{{ formatTime(conv.lastTime) }}</span>
+              <div
+                class="conv-item"
+                :class="{ active: isActiveConv(conv) }"
+                @click="openConversation(conv)"
+              >
+                <a-avatar v-if="conv.userAvatar" :src="conv.userAvatar" />
+                <a-avatar v-else>{{ conv.userName.charAt(0) }}</a-avatar>
+                <div class="conv-meta">
+                  <div class="conv-top">
+                    <span class="conv-name">{{ conv.userName }}</span>
+                    <a-tag color="default">{{ conv.accountNickname }}</a-tag>
+                    <span class="conv-time">{{ formatTime(conv.lastTime) }}</span>
+                  </div>
+                  <p class="conv-last">{{ conv.lastMessage }}</p>
                 </div>
-                <p class="conv-last">{{ conv.lastMessage }}</p>
+                <a-badge v-if="conv.unread > 0" :count="conv.unread" />
               </div>
-              <a-badge v-if="conv.unread > 0" :count="conv.unread" />
-            </div>
+              <template #overlay>
+                <a-menu @click="({ key }: { key: string }) => onContextMenu(key, conv)">
+                  <a-menu-item key="hide">不显示</a-menu-item>
+                  <a-menu-item key="delete" danger>删除消息</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </div>
 
           <div v-if="hasMore" class="load-more">
@@ -198,6 +325,20 @@ onUnmounted(() => {
             </div>
             <div class="chat-id">chatId: {{ selected.chatId }}</div>
           </div>
+          <div v-if="selected.itemId" class="detail-item">
+            <template v-if="matchedItem">
+              <img v-if="matchedItem.picUrl" :src="matchedItem.picUrl" class="item-pic" />
+              <div v-else class="item-pic item-pic-empty" />
+              <div class="item-info">
+                <div class="item-title">{{ matchedItem.title }}</div>
+                <div class="item-price">¥{{ matchedItem.price }}</div>
+              </div>
+            </template>
+            <template v-else-if="!itemLoading">
+              <span class="item-id" title="未在在售商品中匹配到，显示商品ID">商品ID：{{ selected.itemId }}</span>
+            </template>
+            <a-spin v-else size="small" />
+          </div>
         </div>
 
         <div v-if="hasMoreMessages" class="load-more">
@@ -218,6 +359,18 @@ onUnmounted(() => {
             </div>
             <div class="msg-bubble" :class="msg.direction === 'out' ? 'bubble-out' : ''">{{ msg.content }}</div>
           </div>
+        </div>
+
+        <div class="msg-input-bar">
+          <a-input
+            v-model:value="draft"
+            placeholder="输入消息，回车发送"
+            :disabled="sending"
+            @press-enter="send"
+          />
+          <a-button type="primary" :loading="sending" @click="send">
+            <template #icon><SendOutlined /></template>
+          </a-button>
         </div>
       </div>
       <div v-else class="detail-empty">
@@ -330,6 +483,47 @@ onUnmounted(() => {
   font-size: 11px;
   color: var(--wm-text-tertiary);
 }
+.detail-item {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--wm-content-bg, rgba(0,0,0,0.03));
+  max-width: 240px;
+}
+.item-pic {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.item-pic-empty {
+  background: var(--wm-content-bg, #ddd);
+}
+.item-info {
+  min-width: 0;
+}
+.item-title {
+  font-size: 12px;
+  color: var(--wm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.item-price {
+  font-size: 12px;
+  color: #f5222d;
+  font-weight: 600;
+}
+.item-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--wm-text-tertiary);
+}
 .detail-empty {
   display: flex;
   align-items: center;
@@ -381,5 +575,13 @@ onUnmounted(() => {
 .bubble-out {
   background: var(--wm-bubble-out);
   color: #fff;
+}
+.msg-input-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--wm-border);
+  flex-shrink: 0;
+  background: var(--wm-card-bg);
 }
 </style>

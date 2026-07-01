@@ -77,5 +77,5 @@ export const ENV = {
 
 // 数据库配置
 export const DB_CONFIG = {
-    PATH: 'data/goofishcbot.db'
+    PATH: 'data/fishMate.db'
 }

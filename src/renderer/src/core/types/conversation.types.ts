@@ -25,6 +25,8 @@ export interface Conversation {
     unread: number;
     messageCount?: number;
     messages?: ConversationMessage[];
+    // 会话绑定的商品ID（从消息 reminderUrl 提取，可能为空）
+    itemId?: string;
 }
 
 export interface ConversationListResponse {

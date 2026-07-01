@@ -9,6 +9,8 @@ import {
     upsertConversation,
     updateConversationAvatar,
     markConversationRead,
+    deleteConversation as deleteConversationDb,
+    setConversationHidden as setConversationHiddenDb,
     getConversationMessages,
     getConversationMessageCount,
     addConversationMessage,
@@ -35,7 +37,8 @@ export function addIncomingMessage(accountId: string, msg: ChatMessage) {
         userName: msg.senderName,
         lastMessage: msg.content,
         lastTime: timestamp,
-        unread: 1
+        unread: 1,
+        itemId: msg.itemId
     }, false)
 
     // 添加消息，触发事件
@@ -119,7 +122,8 @@ export function getAllConversations(
             lastMessage: c.last_message,
             lastTime: c.last_time,
             unread: c.unread,
-            messageCount: getConversationMessageCount(c.account_id, c.chat_id)
+            messageCount: getConversationMessageCount(c.account_id, c.chat_id),
+            itemId: c.item_id || undefined
         }
     })
 
@@ -163,6 +167,7 @@ export function getConversationDetail(
         lastTime: conv.last_time,
         unread: conv.unread,
         messageCount: getConversationMessageCount(accountId, chatId),
+        itemId: conv.item_id || undefined,
         messages
     }
 }
@@ -172,4 +177,18 @@ export function getConversationDetail(
  */
 export function markAsRead(accountId: string, chatId: string) {
     markConversationRead(accountId, chatId)
+}
+
+/**
+ * 删除对话及其全部消息
+ */
+export function deleteConversation(accountId: string, chatId: string) {
+    deleteConversationDb(accountId, chatId)
+}
+
+/**
+ * 设置会话隐藏/显示
+ */
+export function setConversationHidden(accountId: string, chatId: string, hidden: boolean) {
+    setConversationHiddenDb(accountId, chatId, hidden)
 }

@@ -12,7 +12,9 @@ export {
     updateUserAvatar,
     getAllConversations,
     getConversationDetail,
-    markAsRead
+    markAsRead,
+    deleteConversation,
+    setConversationHidden
 } from './conversation.service.js'
 
 // 消息服务

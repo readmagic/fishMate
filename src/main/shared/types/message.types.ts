@@ -15,6 +15,8 @@ export interface ChatMessage {
     orderId?: string
     orderStatus?: string
     isOrderMessage?: boolean
+    // 会话绑定的商品ID（从 reminderUrl 深链提取）
+    itemId?: string
 }
 
 // 存储的消息（带时间戳）

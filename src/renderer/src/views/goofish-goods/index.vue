@@ -85,8 +85,19 @@ const STEALTH_JS = `(() => {
   } catch (e) {}
 })();`
 
+// 清理闲鱼商品页干扰元素：class 含 surveyWrap（问卷弹层）或 sidebar-container（右侧侧栏）
+const CLEANUP_JS = `(() => {
+  const SEL = '[class*="surveyWrap"], [class*="sidebar-container"]';
+  const sweep = () => document.querySelectorAll(SEL).forEach(el => el.remove());
+  sweep();
+  try {
+    const mo = new MutationObserver(() => sweep());
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+})();`
+
 function onWebviewDomReady() {
-  try { wvRef.value?.executeJavaScript(STEALTH_JS, true) } catch { /* ignore */ }
+  try { wvRef.value?.executeJavaScript(`${STEALTH_JS}\n${CLEANUP_JS}`, true) } catch { /* ignore */ }
 }
 
 async function loadAccounts() {

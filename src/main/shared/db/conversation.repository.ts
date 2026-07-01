@@ -11,18 +11,19 @@ import type {
     AddConversationMessageParams
 } from '../types/index.js'
 
-// 获取对话列表（分页）
+// 获取对话列表（分页，排除已隐藏）
 export function getConversations(limit = 20, offset = 0): DbConversation[] {
     const stmt = db.prepare(`
-        SELECT account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread
-        FROM conversations ORDER BY last_time DESC LIMIT ? OFFSET ?
+        SELECT account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread, item_id
+        FROM conversations WHERE hidden = 0
+        ORDER BY last_time DESC LIMIT ? OFFSET ?
     `)
     return stmt.all(limit, offset) as DbConversation[]
 }
 
-// 获取对话总数
+// 获取对话总数（排除已隐藏）
 export function getConversationCount(): number {
-    const stmt = db.prepare('SELECT COUNT(*) as count FROM conversations')
+    const stmt = db.prepare('SELECT COUNT(*) as count FROM conversations WHERE hidden = 0')
     return (stmt.get() as { count: number }).count
 }
 
@@ -40,16 +41,17 @@ export function upsertConversation(conv: UpsertConversationParams, emitEvent = t
             UPDATE conversations SET
                 user_name = ?, user_avatar = COALESCE(?, user_avatar),
                 last_message = ?, last_time = ?, unread = unread + ?,
-                updated_at = CURRENT_TIMESTAMP
+                item_id = COALESCE(?, item_id),
+                hidden = 0, updated_at = CURRENT_TIMESTAMP
             WHERE account_id = ? AND chat_id = ?
         `)
-        stmt.run(conv.userName, conv.userAvatar, conv.lastMessage, conv.lastTime, conv.unread || 0, conv.accountId, conv.chatId)
+        stmt.run(conv.userName, conv.userAvatar, conv.lastMessage, conv.lastTime, conv.unread || 0, conv.itemId || null, conv.accountId, conv.chatId)
     } else {
         const stmt = db.prepare(`
-            INSERT INTO conversations (account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO conversations (account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread, item_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
-        stmt.run(conv.accountId, conv.chatId, conv.userId, conv.userName, conv.userAvatar || null, conv.lastMessage, conv.lastTime, conv.unread || 0)
+        stmt.run(conv.accountId, conv.chatId, conv.userId, conv.userName, conv.userAvatar || null, conv.lastMessage, conv.lastTime, conv.unread || 0, conv.itemId || null)
     }
     if (emitEvent) {
         emitConversationsUpdated()
@@ -66,6 +68,22 @@ export function updateConversationAvatar(accountId: string, chatId: string, avat
 export function markConversationRead(accountId: string, chatId: string) {
     const stmt = db.prepare('UPDATE conversations SET unread = 0 WHERE account_id = ? AND chat_id = ?')
     stmt.run(accountId, chatId)
+    emitConversationsUpdated()
+}
+
+// 删除对话及其全部消息
+export function deleteConversation(accountId: string, chatId: string) {
+    const delMsgs = db.prepare('DELETE FROM conversation_messages WHERE account_id = ? AND chat_id = ?')
+    delMsgs.run(accountId, chatId)
+    const delConv = db.prepare('DELETE FROM conversations WHERE account_id = ? AND chat_id = ?')
+    delConv.run(accountId, chatId)
+    emitConversationsUpdated()
+}
+
+// 设置会话隐藏/显示（不删数据，仅列表不显示）
+export function setConversationHidden(accountId: string, chatId: string, hidden: boolean) {
+    const stmt = db.prepare('UPDATE conversations SET hidden = ? WHERE account_id = ? AND chat_id = ?')
+    stmt.run(hidden ? 1 : 0, accountId, chatId)
     emitConversationsUpdated()
 }
 

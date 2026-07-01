@@ -9,7 +9,8 @@ import {
   PauseCircleOutlined,
   DeleteOutlined,
   ReloadOutlined,
-  UserOutlined
+  UserOutlined,
+  QrcodeOutlined
 } from '@ant-design/icons-vue'
 import { accountService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
@@ -19,6 +20,7 @@ import type { Account } from '@/core/types'
 const pushStore = usePushStore()
 const loading = ref(false)
 const submitting = ref(false)
+const qrLoading = ref(false)
 const refreshingId = ref<string | null>(null)
 const editingId = ref<string | null>(null)
 const isAdding = ref(false)
@@ -61,6 +63,26 @@ function startAdd() {
   editingId.value = null
   isAdding.value = true
   form.value = { cookies: '', remark: '' }
+}
+
+async function onLoginQr() {
+  qrLoading.value = true
+  try {
+    const res = await accountService.loginQr()
+    if (res.success) {
+      message.success('扫码登录成功')
+      isAdding.value = false
+      editingId.value = null
+      form.value = { cookies: '', remark: '' }
+      await loadData()
+    } else if (res.error && res.error !== '已取消') {
+      message.error(res.error)
+    }
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '扫码登录失败')
+  } finally {
+    qrLoading.value = false
+  }
 }
 
 function cancelEdit() {
@@ -200,6 +222,10 @@ onUnmounted(() => {
                 <template #icon><component :is="editingId ? SaveOutlined : PlusOutlined" /></template>
                 {{ editingId ? '保存' : '添加' }}
               </a-button>
+              <a-button v-if="!editingId" :loading="qrLoading" @click="onLoginQr">
+                <template #icon><QrcodeOutlined /></template>
+                扫码登录
+              </a-button>
               <a-button @click="cancelEdit">取消</a-button>
             </a-space>
           </a-form>
@@ -213,11 +239,11 @@ onUnmounted(() => {
               </a-button>
               <a-button v-if="!isConnected(editingId)" type="primary" @click="onStart(editingId)">
                 <template #icon><PlayCircleOutlined /></template>
-                启动
+                在线
               </a-button>
               <a-button v-else @click="onStop(editingId)">
                 <template #icon><PauseCircleOutlined /></template>
-                停止
+                离线
               </a-button>
               <a-button danger @click="onDelete(editingId)">
                 <template #icon><DeleteOutlined /></template>

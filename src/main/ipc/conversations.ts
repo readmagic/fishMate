@@ -20,6 +20,16 @@ export function registerConversationIPC() {
         return { success: true }
     })
 
+    ipcMain.handle('conversation:delete', async (_e, { accountId, chatId }) => {
+        conversationStore.delete(accountId, chatId)
+        return { success: true }
+    })
+
+    ipcMain.handle('conversation:setHidden', async (_e, { accountId, chatId, hidden }) => {
+        conversationStore.setHidden(accountId, chatId, hidden)
+        return { success: true }
+    })
+
     ipcMain.handle('conversation:userAvatar', async (_e, { userId, accountId }) => {
         const account = accountId ? getAccount(accountId) : null
         if (!account) return { error: 'No account available' }

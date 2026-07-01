@@ -26,5 +26,8 @@ export const accountService = {
   },
   async refreshAccountInfo(id: string): Promise<{ success: boolean; error?: string }> {
     return invoke('account:refreshInfo', { id })
+  },
+  loginQr(): Promise<{ success: boolean; accountId?: string; error?: string }> {
+    return invoke('account:loginQr')
   }
 }

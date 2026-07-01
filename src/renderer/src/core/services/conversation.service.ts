@@ -10,5 +10,17 @@ export const conversationService = {
   },
   markAsRead(accountId: string, chatId: string) {
     return invoke<{ success: boolean }>('conversation:markRead', { accountId, chatId })
+  },
+  deleteConversation(accountId: string, chatId: string) {
+    return invoke<{ success: boolean }>('conversation:delete', { accountId, chatId })
+  },
+  setHidden(accountId: string, chatId: string, hidden: boolean) {
+    return invoke<{ success: boolean }>('conversation:setHidden', { accountId, chatId, hidden })
+  },
+  sendMessage(accountId: string, chatId: string, toUserId: string, text: string) {
+    return invoke<{ success: boolean; error?: string }>('message:send', { accountId, chatId, toUserId, text })
+  },
+  setInChat(inChat: boolean) {
+    return invoke('message:setInChat', { inChat })
   }
 }

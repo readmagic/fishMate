@@ -13,6 +13,7 @@ const levelPriority: Record<LogLevel, number> = {
 
 let currentLevel: LogLevel = 'INFO'
 let currentLogFile: string = ''
+let currentDateStr = ''
 
 export function setLogLevel(level: LogLevel) {
     currentLevel = level
@@ -58,6 +59,7 @@ function initLogFile(): string {
         fs.mkdirSync(dayDir, { recursive: true })
     }
 
+    currentDateStr = dateStr
     // 以启动时间戳命名日志文件
     const timestamp = getTimestampStr()
     return path.join(dayDir, `${timestamp}.log`)
@@ -90,8 +92,10 @@ export function log(level: LogLevel, module: string, message: string) {
     }
     process.stdout.write(`${colors[level]}${logLine}\x1b[0m\n`)
 
-    // 惰性初始化日志文件（确保 GOOFISH_DATA_DIR 已设置）
-    if (!currentLogFile) currentLogFile = initLogFile()
+    // 惰性初始化日志文件（确保 GOOFISH_DATA_DIR 已设置）；跨天时滚动到新文件
+    if (!currentLogFile || currentDateStr !== getDateStr()) {
+        currentLogFile = initLogFile()
+    }
 
     logQueue.push(logLine)
     flushLogs()

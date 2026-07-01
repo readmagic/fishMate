@@ -39,7 +39,6 @@ onUnmounted(() => {
 
 <template>
   <a-spin :spinning="loading">
-    <h2 class="page-title">仪表盘</h2>
     <a-row :gutter="16" class="stats-row">
       <a-col :xs="24" :sm="8">
         <StatsCard title="总账号" :value="pushStore.accounts.length" :icon="UserOutlined" color="#1677ff" />

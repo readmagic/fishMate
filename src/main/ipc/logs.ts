@@ -60,18 +60,30 @@ export function registerLogIPC() {
 
     ipcMain.handle('logs:current', async (_e, { level, limit = 100 } = {}) => {
         try {
-            const now = new Date()
-            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-            const dayDir = path.join(logsDir(), dateStr)
-            if (!fs.existsSync(dayDir)) return { lines: [], total: 0, file: null }
-            const files = fs
-                .readdirSync(dayDir)
-                .filter((f) => f.endsWith('.log'))
-                .map((f) => ({ name: f, mtime: fs.statSync(path.join(dayDir, f)).mtimeMs }))
-                .sort((a, b) => b.mtime - a.mtime)
-            if (files.length === 0) return { lines: [], total: 0, file: null }
-            const latestFile = files[0].name
-            const filePath = path.join(dayDir, latestFile)
+            const root = logsDir()
+            if (!fs.existsSync(root)) return { lines: [], total: 0, file: null }
+            // 日期目录按新→旧排序，取第一个含 .log 文件的（兼容跨午夜：今天还没日志则回退到昨天）
+            const dateDirs = fs.readdirSync(root, { withFileTypes: true })
+                .filter((e) => e.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(e.name))
+                .map((e) => e.name)
+                .sort((a, b) => b.localeCompare(a))
+            let targetDate: string | null = null
+            let latestFile: string | null = null
+            for (const d of dateDirs) {
+                const dayDir = path.join(root, d)
+                const files = fs
+                    .readdirSync(dayDir)
+                    .filter((f) => f.endsWith('.log'))
+                    .map((f) => ({ name: f, mtime: fs.statSync(path.join(dayDir, f)).mtimeMs }))
+                    .sort((a, b) => b.mtime - a.mtime)
+                if (files.length > 0) {
+                    targetDate = d
+                    latestFile = files[0].name
+                    break
+                }
+            }
+            if (!targetDate || !latestFile) return { lines: [], total: 0, file: null }
+            const filePath = path.join(root, targetDate, latestFile)
             const content = fs.readFileSync(filePath, 'utf-8')
             let lines = content.split('\n').filter((l) => l.trim())
             if (level && level !== 'ALL') {
@@ -80,7 +92,7 @@ export function registerLogIPC() {
             const maxLines = Number(limit) || 100
             const total = lines.length
             lines = lines.slice(-maxLines)
-            return { lines, total, file: latestFile, date: dateStr }
+            return { lines, total, file: latestFile, date: targetDate }
         } catch {
             return { error: '读取当前日志失败' }
         }

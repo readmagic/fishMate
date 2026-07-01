@@ -18,5 +18,7 @@ interface Window {
     unsubscribe: (events: string[]) => void
     updateParams: (params: Record<string, unknown>) => void
     onPush: (cb: (payload: { event: string; data: unknown }) => void) => () => void
+    onMaximizeChange: (cb: (maximized: boolean) => void) => () => void
+    onNavigate: (cb: (route: string) => void) => () => void
   }
 }

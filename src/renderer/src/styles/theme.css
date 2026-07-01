@@ -1,69 +1,132 @@
 /**
- * 微信桌面版配色系统
+ * fishMate 全局设计系统
+ * 设计语言：Fluent Design + macOS 融合 · 极简 · 高级感 · 柔和灰调 · 大留白
  * useThemeStore 已在 <html> 设置 data-theme="light"|"dark"，此处消费该属性。
  */
+
 :root[data-theme='light'] {
-  --wm-rail-bg: #2e2e2e;
-  --wm-rail-icon: #a8a8a8;
-  --wm-rail-icon-hover: #ffffff;
-  --wm-rail-hover-bg: #3a3a3a;
-  --wm-rail-active-bg: #3d3d3d;
-
-  --wm-content-bg: #f5f5f5;
+  /* —— 背景 —— */
+  --wm-window-bg: #f7f7f8;        /* 窗口底色 */
+  --wm-content-bg: #ffffff;       /* 主内容 / 卡片 */
+  --wm-rail-bg: #f6f6f7;          /* 一级导航 */
+  --wm-sidebar-bg: #fafafa;       /* 二级侧栏 */
   --wm-card-bg: #ffffff;
-  --wm-card-border: #e7e7e7;
-  --wm-card-radius: 8px;
+  --wm-header-bg: #ffffff;
 
-  --wm-text: #1a1a1a;
-  --wm-text-secondary: rgba(0, 0, 0, 0.55);
-  --wm-text-tertiary: rgba(0, 0, 0, 0.35);
-  --wm-border: #e7e7e7;
+  /* —— 文字 —— */
+  --wm-text: #202124;             /* 标题 */
+  --wm-text-secondary: #444444;   /* 正文 */
+  --wm-text-tertiary: #888888;    /* 辅助 */
+  --wm-text-disabled: #bbbbbb;
 
-  --wm-primary: #07c160;
-  --wm-primary-hover: #06ad56;
+  /* —— 边框 / 分隔 —— */
+  --wm-border: #e5e5e7;
+  --wm-rail-sep: #e8e8e8;
 
+  /* —— 交互态 —— */
+  --wm-list-hover: #f1f1f1;
+  --wm-list-active: #ececec;
+  --wm-rail-hover-bg: #ececec;
+  --wm-rail-active-bg: #e5e5e5;
+  --wm-rail-icon: #666666;
+  --wm-rail-icon-hover: #202124;
+  --wm-rail-icon-active: #18c37e;
+
+  /* —— 主题色 —— */
+  --wm-primary: #18c37e;
+  --wm-primary-hover: #16a86e;
   --wm-bubble-in: #ffffff;
-  --wm-bubble-out: #95ec69;
+  --wm-bubble-out: #18c37e;
 
-  --wm-list-hover: rgba(0, 0, 0, 0.03);
-  --wm-list-active: #dcdcdc;
-
-  --wm-rail-width: 60px;
-  --wm-list-width: 300px;
+  /* —— 尺寸 —— */
+  --wm-rail-width: 56px;
+  --wm-list-width: 220px;
   --wm-header-height: 40px;
+  --wm-titlebar-height: 40px;
+
+  /* —— 标题栏 —— */
+  --wm-titlebar-bg: #ffffff;
+  --wm-titlebar-btn-hover: #eeeeef;
+  --wm-titlebar-close-hover: #e81123;
+
+  /* —— 圆角 —— */
+  --wm-radius-window: 12px;
+  --wm-radius-card: 14px;
+  --wm-radius-modal: 16px;
+  --wm-radius-btn: 10px;
+  --wm-radius-item: 10px;
+  --wm-radius-input: 18px;
+
+  /* —— 阴影（极轻） —— */
+  --wm-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --wm-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* —— 字体 —— */
+  --wm-font: 'Inter', 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system,
+    BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
 
   color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-  --wm-rail-bg: #1e1e1e;
-  --wm-rail-icon: #8a8a8a;
-  --wm-rail-icon-hover: #e0e0e0;
-  --wm-rail-hover-bg: #2a2a2a;
-  --wm-rail-active-bg: #262626;
+  /* —— 背景 —— */
+  --wm-window-bg: #1c1c1e;
+  --wm-content-bg: #242426;
+  --wm-rail-bg: #1f1f21;
+  --wm-sidebar-bg: #1f1f21;
+  --wm-card-bg: #2a2a2c;
+  --wm-header-bg: #1f1f21;
 
-  --wm-content-bg: #1a1a1a;
-  --wm-card-bg: #2a2a2a;
-  --wm-card-border: #3a3a3a;
-  --wm-card-radius: 8px;
+  /* —— 文字 —— */
+  --wm-text: #e8e8ea;
+  --wm-text-secondary: #b8b8bc;
+  --wm-text-tertiary: #8a8a90;
+  --wm-text-disabled: #555558;
 
-  --wm-text: #e8e8e8;
-  --wm-text-secondary: rgba(255, 255, 255, 0.55);
-  --wm-text-tertiary: rgba(255, 255, 255, 0.35);
-  --wm-border: #333333;
+  /* —— 边框 / 分隔 —— */
+  --wm-border: #343436;
+  --wm-rail-sep: #2e2e30;
 
-  --wm-primary: #07c160;
-  --wm-primary-hover: #06ad56;
-
-  --wm-bubble-in: #2a2a2a;
-  --wm-bubble-out: #07c160;
-
+  /* —— 交互态 —— */
   --wm-list-hover: rgba(255, 255, 255, 0.05);
-  --wm-list-active: #333333;
+  --wm-list-active: rgba(255, 255, 255, 0.09);
+  --wm-rail-hover-bg: rgba(255, 255, 255, 0.06);
+  --wm-rail-active-bg: rgba(255, 255, 255, 0.1);
+  --wm-rail-icon: #9a9aa0;
+  --wm-rail-icon-hover: #e8e8ea;
+  --wm-rail-icon-active: #18c37e;
 
-  --wm-rail-width: 60px;
-  --wm-list-width: 300px;
+  /* —— 主题色 —— */
+  --wm-primary: #18c37e;
+  --wm-primary-hover: #1ad98c;
+  --wm-bubble-in: #2a2a2c;
+  --wm-bubble-out: #18c37e;
+
+  /* —— 尺寸 —— */
+  --wm-rail-width: 56px;
+  --wm-list-width: 220px;
   --wm-header-height: 40px;
+  --wm-titlebar-height: 40px;
+
+  /* —— 标题栏 —— */
+  --wm-titlebar-bg: #1f1f21;
+  --wm-titlebar-btn-hover: rgba(255, 255, 255, 0.08);
+  --wm-titlebar-close-hover: #e81123;
+
+  /* —— 圆角 —— */
+  --wm-radius-window: 12px;
+  --wm-radius-card: 14px;
+  --wm-radius-modal: 16px;
+  --wm-radius-btn: 10px;
+  --wm-radius-item: 10px;
+  --wm-radius-input: 18px;
+
+  /* —— 阴影 —— */
+  --wm-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --wm-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  --wm-font: 'Inter', 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system,
+    BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
 
   color-scheme: dark;
 }
@@ -73,8 +136,29 @@
   color-scheme: light;
 }
 
+html,
 body {
   margin: 0;
-  background: var(--wm-content-bg);
+  font-family: var(--wm-font);
+  font-size: 14px;
+  background: var(--wm-window-bg);
   color: var(--wm-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 全局滚动条弱化，配合极简风格 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }

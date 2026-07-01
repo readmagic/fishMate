@@ -9,7 +9,9 @@ import {
     updateUserAvatar as updateAvatar,
     getAllConversations,
     getConversationDetail,
-    markAsRead
+    markAsRead,
+    deleteConversation as deleteConv,
+    setConversationHidden as setHiddenConv
 } from '../services/index.js'
 import type { ChatMessage, Conversation } from '../types/index.js'
 
@@ -41,6 +43,14 @@ class ConversationStore {
 
     markRead(accountId: string, chatId: string) {
         markAsRead(accountId, chatId)
+    }
+
+    delete(accountId: string, chatId: string) {
+        deleteConv(accountId, chatId)
+    }
+
+    setHidden(accountId: string, chatId: string, hidden: boolean) {
+        setHiddenConv(accountId, chatId, hidden)
     }
 }
 
