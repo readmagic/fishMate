@@ -70,9 +70,10 @@ export const LOG_CONFIG = {
     RETENTION_DAYS: 7
 }
 
-// 环境配置
+// 环境配置：以 app.isPackaged 为权威信号（原 NODE_ENV/ELECTRON_RUN 启发式在打包后误判为 dev）
+import { app } from 'electron'
 export const ENV = {
-    IS_DEV: process.env.NODE_ENV !== 'production' || !process.env.ELECTRON_RUN
+    IS_DEV: !app.isPackaged
 }
 
 // 数据库配置

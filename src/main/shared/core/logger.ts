@@ -1,9 +1,13 @@
 import fs from 'fs'
 import path from 'path'
+import { app } from 'electron'
 
 import { getDataDir } from './paths.js'
 
 const logsDir = () => path.join(getDataDir(), 'logs')
+
+// 打包后：仅 WARN/ERROR 入文件，且不输出到 stdout（无任何调试输出）
+const IS_PROD = app.isPackaged
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR'
 
@@ -11,12 +15,13 @@ const levelPriority: Record<LogLevel, number> = {
     DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3
 }
 
-let currentLevel: LogLevel = 'INFO'
+let currentLevel: LogLevel = IS_PROD ? 'WARN' : 'INFO'
 let currentLogFile: string = ''
 let currentDateStr = ''
 
 export function setLogLevel(level: LogLevel) {
-    currentLevel = level
+    // 打包后锁定 WARN，禁止外部调低（如 backend 用 LOG_CONFIG.LEVEL 覆盖）
+    currentLevel = IS_PROD && levelPriority[level] < levelPriority['WARN'] ? 'WARN' : level
 }
 
 function formatTime(): string {
@@ -87,10 +92,13 @@ export function log(level: LogLevel, module: string, message: string) {
     const time = formatTime()
     const logLine = `${time} | ${level.padEnd(5)} | ${module.padEnd(12)} | ${message}`
 
-    const colors: Record<LogLevel, string> = {
-        DEBUG: '\x1b[90m', INFO: '\x1b[36m', WARN: '\x1b[33m', ERROR: '\x1b[31m'
+    // 打包后不写 stdout（无控制台输出）；仅落文件
+    if (!IS_PROD) {
+        const colors: Record<LogLevel, string> = {
+            DEBUG: '\x1b[90m', INFO: '\x1b[36m', WARN: '\x1b[33m', ERROR: '\x1b[31m'
+        }
+        process.stdout.write(`${colors[level]}${logLine}\x1b[0m\n`)
     }
-    process.stdout.write(`${colors[level]}${logLine}\x1b[0m\n`)
 
     // 惰性初始化日志文件（确保 GOOFISH_DATA_DIR 已设置）；跨天时滚动到新文件
     if (!currentLogFile || currentDateStr !== getDateStr()) {

@@ -75,7 +75,7 @@ export function registerMessageIPC(cm: ClientManager) {
                 shot.startCapture()
             })
             if (!buffer) return { success: false, error: '已取消截屏' }
-            const tmp = path.join(os.tmpdir(), `fishmate-shot-${Date.now()}.png`)
+            const tmp = path.join(os.tmpdir(), `fishMate-shot-${Date.now()}.png`)
             fs.writeFileSync(tmp, buffer)
             const up = await uploadImage(accountId, tmp)
             fs.unlink(tmp, () => { /* ignore */ })

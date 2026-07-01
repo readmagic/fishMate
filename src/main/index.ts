@@ -121,6 +121,7 @@ async function bootstrap() {
   // 用户数据目录（DB + 日志）落到系统 userData
   process.env.GOOFISH_DATA_DIR = app.getPath('userData')
   if (isDev) process.env.NODE_ENV = 'development'
+  else process.env.NODE_ENV = 'production'
   process.env.ELECTRON_RUN = '1'
 
   const cm = await startBackend()
@@ -174,6 +175,18 @@ function createWindow() {
   const emitMaxState = () => mainWindow?.webContents.send('window:maximizeChange', !!mainWindow?.isMaximized())
   mainWindow.on('maximize', emitMaxState)
   mainWindow.on('unmaximize', emitMaxState)
+
+  // 打包后屏蔽 DevTools 快捷键（F12 / Ctrl+Shift+I,J,C / Cmd+Opt+I,J），控制台不可打开
+  if (app.isPackaged) {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      const k = input.key.toLowerCase()
+      const devtools =
+        k === 'f12' ||
+        (input.control && input.shift && (k === 'i' || k === 'j' || k === 'c')) ||
+        (input.meta && input.alt && (k === 'i' || k === 'j'))
+      if (devtools) event.preventDefault()
+    })
+  }
 
   // 外部链接用系统浏览器打开
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
