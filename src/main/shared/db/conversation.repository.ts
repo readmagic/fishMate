@@ -3,7 +3,7 @@
  */
 
 import { db } from './connection.js'
-import { emitConversationsUpdated } from '../core/event-emitter.js'
+import { emitConversationsUpdated, emitNewMessage } from '../core/event-emitter.js'
 import type {
     DbConversation,
     DbConversationMessage,
@@ -101,5 +101,6 @@ export function addConversationMessage(msg: AddConversationMessageParams): numbe
     `)
     const result = stmt.run(msg.accountId, msg.chatId, msg.senderId, msg.senderName, msg.content, msg.msgTime, msg.msgId || null, msg.direction, Date.now())
     emitConversationsUpdated()
+    emitNewMessage()
     return result.lastInsertRowid as number
 }

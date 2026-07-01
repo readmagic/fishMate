@@ -15,7 +15,8 @@ appEvents.setMaxListeners(50)
 export const Events = {
     ORDERS_UPDATED: 'orders:updated',
     ACCOUNTS_UPDATED: 'accounts:updated',
-    CONVERSATIONS_UPDATED: 'conversations:updated'
+    CONVERSATIONS_UPDATED: 'conversations:updated',
+    NEW_MESSAGE: 'new:message'
 } as const
 
 // 防抖定时器
@@ -59,4 +60,9 @@ export function emitConversationsUpdated() {
         appEvents.emit(Events.CONVERSATIONS_UPDATED)
         debounceTimers.conversations = null
     }, DEBOUNCE_DELAY)
+}
+
+// 触发新消息事件（不防抖；闪烁由监听方自行节流）
+export function emitNewMessage() {
+    appEvents.emit(Events.NEW_MESSAGE)
 }

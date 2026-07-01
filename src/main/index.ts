@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, session } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, shell, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
@@ -6,6 +6,7 @@ import { createLogger } from './shared/core/logger.js'
 import { startBackend, shutdownBackend } from './backend.js'
 import { registerAllIPC } from './ipc/index.js'
 import { clearPushSubscription } from './ipc/push.js'
+import { appEvents, Events } from './shared/core/event-emitter.js'
 
 const logger = createLogger('Main')
 
@@ -34,6 +35,64 @@ if (app.isPackaged) {
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let trayIcon: Electron.NativeImage | null = null
+let isQuitting = false
+let flashTimer: NodeJS.Timeout | null = null
+
+function resolveTrayIconPath() {
+  // dev: dist/main → src/renderer/public/tray-logo.png
+  // 打包后: app.asar/dist/main → ../renderer/tray-logo.png
+  return app.isPackaged
+    ? path.join(__dirname, '../renderer/tray-logo.png')
+    : path.join(__dirname, '../../src/renderer/public/tray-logo.png')
+}
+
+function createTray() {
+  if (tray) return
+  trayIcon = nativeImage.createFromPath(resolveTrayIconPath()).resize({ width: 22, height: 22 })
+  tray = new Tray(trayIcon)
+  tray.setToolTip('fishMate')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: '显示主窗口', click: showWindow },
+      { type: 'separator' },
+      { label: '退出', click: () => app.quit() }
+    ])
+  )
+  tray.on('click', showWindow)
+
+  // 收到新对话消息 → 托盘闪烁；窗口显示/聚焦后自动停止
+  appEvents.on(Events.NEW_MESSAGE, startFlashing)
+}
+
+function startFlashing() {
+  if (flashTimer || !tray || !trayIcon) return
+  const emptyIcon = nativeImage.createEmpty()
+  let on = false
+  flashTimer = setInterval(() => {
+    on = !on
+    tray?.setImage(on ? emptyIcon : trayIcon)
+  }, 500)
+}
+
+function stopFlashing() {
+  if (flashTimer) {
+    clearInterval(flashTimer)
+    flashTimer = null
+  }
+  if (tray && trayIcon) tray.setImage(trayIcon)
+}
+
+function showWindow() {
+  if (!mainWindow) {
+    createWindow()
+    return
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
 
 async function bootstrap() {
   // 用户数据目录（DB + 日志）落到系统 userData
@@ -45,6 +104,7 @@ async function bootstrap() {
   registerAllIPC(cm)
 
   createWindow()
+  createTray()
 }
 
 function createWindow() {
@@ -73,6 +133,16 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
+  mainWindow.on('show', stopFlashing)
+  mainWindow.on('focus', stopFlashing)
+
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault()
+      mainWindow?.hide()
+    }
+  })
+
   mainWindow.on('closed', () => {
     if (mainWindow) {
       clearPushSubscription(mainWindow.webContents.id)
@@ -89,10 +159,12 @@ app.whenReady().then(bootstrap).catch((e) => {
 })
 
 app.on('window-all-closed', () => {
-  app.quit()
+  // 托盘常驻：窗口隐藏而非退出，由托盘菜单"退出"或 Cmd+Q 退出
 })
 
 app.on('before-quit', async (e) => {
+  isQuitting = true
+  stopFlashing()
   e.preventDefault()
   await shutdownBackend()
   app.exit(0)
