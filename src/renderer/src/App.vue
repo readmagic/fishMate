@@ -7,7 +7,7 @@ const themeStore = useThemeStore()
 const isDark = computed(() => themeStore.isDark)
 const themeConfig = computed(() => ({
   algorithm: isDark.value ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-  token: { colorPrimary: '#1677ff' }
+  token: { colorPrimary: '#07c160' }
 }))
 </script>
 

@@ -17,6 +17,7 @@ import {
   goodsService,
   workflowService
 } from '@/core/services'
+import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 import type {
   AutoSellRule,
   DeliveryType,
@@ -37,6 +38,7 @@ const workflows = ref<Workflow[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const editingRule = ref<AutoSellRule | null>(null)
+const isAdding = ref(false)
 
 // 库存 modal
 const showStockModal = ref(false)
@@ -78,6 +80,8 @@ const triggerOptions = [
   { value: 'paid' as TriggerOn, label: '待发货' },
   { value: 'confirmed' as TriggerOn, label: '待收货' }
 ]
+
+const hasSelection = computed(() => editingRule.value !== null || isAdding.value)
 
 const editingRuleStock = computed(() => {
   const r = editingRule.value
@@ -160,7 +164,8 @@ function resetForm() {
   stockContent.value = ''
 }
 
-function onEdit(rule: AutoSellRule) {
+function selectRule(rule: AutoSellRule) {
+  isAdding.value = false
   editingRule.value = rule
   const api = rule.apiConfig
   Object.assign(formData, {
@@ -181,8 +186,16 @@ function onEdit(rule: AutoSellRule) {
   goodsSearch.value = ''
   stockContent.value = ''
 }
+
+function startAdd() {
+  editingRule.value = null
+  isAdding.value = true
+  resetForm()
+}
+
 function cancelEdit() {
   editingRule.value = null
+  isAdding.value = false
   resetForm()
 }
 
@@ -296,8 +309,8 @@ async function saveRule() {
       const contents = stockContent.value.split('\n').map((s) => s.trim()).filter(Boolean)
       if (contents.length > 0) await service.addStock(ruleId, contents)
     }
-    cancelEdit()
     await loadRules()
+    cancelEdit()
     message.success('保存成功')
   } catch {
     message.error('保存失败')
@@ -317,6 +330,7 @@ function deleteRule(rule: AutoSellRule) {
     okType: 'danger',
     onOk: async () => {
       await service.deleteRule(rule.id)
+      if (editingRule.value?.id === rule.id) cancelEdit()
       await loadRules()
     }
   })
@@ -364,17 +378,6 @@ function clearStock(ruleId: number, onlyUsed: boolean) {
   })
 }
 
-const columns = [
-  { title: '启用', key: 'enabled', width: 60 },
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: '商品', key: 'goods' },
-  { title: '发货方式', key: 'deliveryType', width: 100 },
-  { title: '触发', key: 'triggerOn', width: 90 },
-  { title: '流程', key: 'workflow', width: 110 },
-  { title: '库存', key: 'stock', width: 100 },
-  { title: '操作', key: 'action', width: 140 }
-]
-
 onMounted(() => {
   loadRules()
   loadAccounts()
@@ -384,177 +387,182 @@ onMounted(() => {
 </script>
 
 <template>
-  <h2 class="page-title">自动发货</h2>
-
-  <a-row :gutter="16">
-    <!-- 左：表单 -->
-    <a-col :xs="24" :xl="9">
-      <a-card :title="editingRule ? '编辑规则' : '添加规则'">
-        <a-form layout="vertical" @submit.prevent="saveRule">
-          <a-form-item label="规则名称" required>
-            <a-input v-model:value="formData.name" placeholder="例如：王者荣耀自动发货" />
-          </a-form-item>
-
-          <a-form-item label="账号">
-            <a-select
-              v-model:value="formData.accountId"
-              placeholder="选择账号（可留空，按商品自动）"
-              allow-clear
-              @change="onAccountChange"
+  <TwoPaneLayout :list-width="320">
+    <template #list>
+      <div class="list-header">
+        <span class="list-title">规则列表</span>
+        <a-space size="small">
+          <a-button size="small" type="primary" @click="startAdd">
+            <template #icon><PlusOutlined /></template>
+            新建
+          </a-button>
+          <a-button size="small" :loading="loading" @click="loadRules">
+            <template #icon><ReloadOutlined /></template>
+          </a-button>
+        </a-space>
+      </div>
+      <div class="list-scroll">
+        <a-spin :spinning="loading">
+          <a-empty v-if="rules.length === 0" description="暂无规则" />
+          <div v-else class="rule-list">
+            <div
+              v-for="rule in rules"
+              :key="rule.id"
+              class="rule-row"
+              :class="{ active: editingRule?.id === rule.id }"
+              @click="selectRule(rule)"
             >
-              <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
-                {{ a.nickname || a.id }}
-              </a-select-option>
-            </a-select>
-          </a-form-item>
-
-          <a-form-item label="商品" required>
-            <div v-if="selectedGoods" class="goods-selected">
-              <img v-if="selectedGoods.picUrl" :src="selectedGoods.picUrl" class="thumb" />
-              <span class="goods-title">{{ selectedGoods.title }}</span>
-              <a-button size="small" type="link" danger @click="clearGoods">清除</a-button>
-            </div>
-            <div v-else class="goods-search-wrap">
-              <a-input
-                v-model:value="goodsSearch"
-                placeholder="搜索商品名称或ID"
-                @focus="onGoodsSearchFocus"
-                @blur="onGoodsSearchBlur"
-              />
-              <div v-if="showGoodsDropdown && filteredGoods.length" class="goods-dropdown">
-                <div v-for="g in filteredGoods" :key="g.id" class="goods-option" @mousedown.prevent="selectGoods(g)">
-                  <img v-if="g.picUrl" :src="g.picUrl" class="thumb" />
-                  <span class="goods-title">{{ g.title }}</span>
-                  <span class="goods-id">¥{{ g.price }}</span>
+              <div class="rule-main">
+                <div class="rule-name">{{ rule.name }}</div>
+                <div class="rule-sub">
+                  <a-tag class="sub-tag">{{ deliveryTypeLabel(rule.deliveryType) }}</a-tag>
+                  <span class="muted">{{ getGoodsTitle(rule.itemId) }}</span>
+                </div>
+                <div v-if="rule.deliveryType === 'stock'" class="rule-stock">
+                  库存：{{ (rule.stockCount || 0) - (rule.usedCount || 0) }}/{{ rule.stockCount || 0 }}
                 </div>
               </div>
-              <a-empty v-else-if="showGoodsDropdown && !loadingGoods" description="无匹配商品" :image="false" />
-            </div>
-          </a-form-item>
-
-          <a-form-item label="发货方式">
-            <a-radio-group v-model:value="formData.deliveryType">
-              <a-radio v-for="t in deliveryTypes" :key="t.value" :value="t.value">{{ t.label }}</a-radio>
-            </a-radio-group>
-          </a-form-item>
-
-          <!-- 固定文本 -->
-          <a-form-item v-if="formData.deliveryType === 'fixed'" label="发货内容" required>
-            <a-textarea v-model:value="formData.deliveryContent" :rows="4" placeholder="买家付款后自动发送的内容" />
-          </a-form-item>
-
-          <!-- 库存发货 -->
-          <template v-else-if="formData.deliveryType === 'stock'">
-            <a-form-item label="库存内容（每行一条）">
-              <a-textarea v-model:value="stockContent" :rows="6" placeholder="每行一条发货内容" />
-              <div class="hint">{{ stockContentCount }} 条</div>
-              <a-upload :show-upload-list="false" :before-upload="onStockFileSelect" accept=".txt">
-                <a-button size="small" type="link"><template #icon><UploadOutlined /></template>从文件导入</a-button>
-              </a-upload>
-            </a-form-item>
-            <div v-if="editingRule" class="stock-summary">
-              当前库存：{{ editingRuleStock.total }} 条，可用 {{ editingRuleStock.available }} 条
-            </div>
-          </template>
-
-          <!-- API 取货 -->
-          <template v-else-if="formData.deliveryType === 'api'">
-            <a-form-item label="API 地址" required>
-              <a-input v-model:value="formData.apiUrl" placeholder="https://api.example.com/fetch" />
-            </a-form-item>
-            <a-form-item label="请求方法">
-              <a-radio-group v-model:value="formData.apiMethod">
-                <a-radio value="GET">GET</a-radio>
-                <a-radio value="POST">POST</a-radio>
-              </a-radio-group>
-            </a-form-item>
-            <a-form-item label="Headers（JSON）">
-              <a-textarea v-model:value="formData.apiHeaders" :rows="4" class="mono" placeholder='{ "Authorization": "Bearer xxx" }' />
-            </a-form-item>
-            <a-form-item label="请求 Body">
-              <a-textarea v-model:value="formData.apiBody" :rows="4" class="mono" placeholder="POST 请求体" />
-            </a-form-item>
-            <a-form-item label="响应字段">
-              <a-input v-model:value="formData.apiResponseField" placeholder="如：data.code，留空返回完整响应" />
-            </a-form-item>
-          </template>
-
-          <a-form-item label="触发时机">
-            <a-radio-group v-model:value="formData.triggerOn">
-              <a-radio v-for="t in triggerOptions" :key="t.value" :value="t.value">{{ t.label }}</a-radio>
-            </a-radio-group>
-          </a-form-item>
-
-          <a-form-item label="发货流程">
-            <a-select v-model:value="formData.workflowId" allow-clear placeholder="默认流程">
-              <a-select-option v-for="w in workflows" :key="w.id" :value="w.id">{{ w.name }}</a-select-option>
-            </a-select>
-            <a-button size="small" type="link" @click="router.push('/workflow')">管理流程</a-button>
-          </a-form-item>
-
-          <a-form-item>
-            <a-checkbox v-model:checked="formData.enabled">启用此规则</a-checkbox>
-          </a-form-item>
-
-          <a-space>
-            <a-button type="primary" html-type="submit" :loading="saving">
-              <template #icon><component :is="editingRule ? SaveOutlined : PlusOutlined" /></template>
-              {{ editingRule ? '保存' : '添加' }}
-            </a-button>
-            <a-button v-if="editingRule" @click="cancelEdit">取消</a-button>
-          </a-space>
-        </a-form>
-      </a-card>
-    </a-col>
-
-    <!-- 右：规则列表 -->
-    <a-col :xs="24" :xl="15">
-      <a-card title="规则列表">
-        <template #extra>
-          <a-button :loading="loading" @click="loadRules"><template #icon><ReloadOutlined /></template></a-button>
-        </template>
-        <a-table :columns="columns" :data-source="rules" :loading="loading" row-key="id" size="middle" :pagination="false" :scroll="{ x: 900 }">
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'enabled'">
-              <a-switch :checked="record.enabled" size="small" @change="toggleRule(record)" />
-            </template>
-            <template v-else-if="column.key === 'goods'">
-              <a-tooltip :title="getGoodsTitle(record.itemId)">
-                <span class="ellipsis">{{ getGoodsTitle(record.itemId) }}</span>
-              </a-tooltip>
-            </template>
-            <template v-else-if="column.key === 'deliveryType'">
-              <a-tag>{{ deliveryTypeLabel(record.deliveryType) }}</a-tag>
-            </template>
-            <template v-else-if="column.key === 'triggerOn'">{{ triggerLabel(record.triggerOn) }}</template>
-            <template v-else-if="column.key === 'workflow'">{{ workflowName(record.workflowId) }}</template>
-            <template v-else-if="column.key === 'stock'">
-              <span v-if="record.deliveryType === 'stock'">
-                {{ (record.stockCount || 0) - (record.usedCount || 0) }}/{{ record.stockCount || 0 }}
-              </span>
-              <span v-else class="muted">-</span>
-            </template>
-            <template v-else-if="column.key === 'action'">
-              <a-space size="small">
-                <a-button size="small" @click="onEdit(record)">
-                  <template #icon><EditOutlined /></template>
-                </a-button>
-                <a-button v-if="record.deliveryType === 'stock'" size="small" @click="openStockModal(record.id)">
+              <div class="rule-actions" @click.stop>
+                <a-switch :checked="rule.enabled" size="small" @change="toggleRule(rule)" />
+                <a-button v-if="rule.deliveryType === 'stock'" size="small" @click="openStockModal(rule.id)">
                   <template #icon><InboxOutlined /></template>
                 </a-button>
-                <a-button size="small" danger @click="deleteRule(record)">
+                <a-button size="small" danger @click="deleteRule(rule)">
                   <template #icon><DeleteOutlined /></template>
                 </a-button>
-              </a-space>
-            </template>
-          </template>
-          <template #emptyText><a-empty description="暂无自动发货规则" /></template>
-        </a-table>
-      </a-card>
-    </a-col>
-  </a-row>
+              </div>
+            </div>
+          </div>
+        </a-spin>
+      </div>
+    </template>
 
-  <!-- 库存 Modal -->
+    <template #detail>
+      <div v-if="hasSelection" class="detail-wrap">
+        <div class="detail-header">
+          <component :is="editingRule ? EditOutlined : PlusOutlined" />
+          <span>{{ editingRule ? '编辑规则' : '添加规则' }}</span>
+        </div>
+        <div class="detail-body">
+          <a-form layout="vertical" @submit.prevent="saveRule">
+            <a-form-item label="规则名称" required>
+              <a-input v-model:value="formData.name" placeholder="例如：王者荣耀自动发货" />
+            </a-form-item>
+
+            <a-form-item label="账号">
+              <a-select
+                v-model:value="formData.accountId"
+                placeholder="选择账号（可留空，按商品自动）"
+                allow-clear
+                @change="onAccountChange"
+              >
+                <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
+                  {{ a.nickname || a.id }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+
+            <a-form-item label="商品" required>
+              <div v-if="selectedGoods" class="goods-selected">
+                <img v-if="selectedGoods.picUrl" :src="selectedGoods.picUrl" class="thumb" />
+                <span class="goods-title">{{ selectedGoods.title }}</span>
+                <a-button size="small" type="link" danger @click="clearGoods">清除</a-button>
+              </div>
+              <div v-else class="goods-search-wrap">
+                <a-input
+                  v-model:value="goodsSearch"
+                  placeholder="搜索商品名称或ID"
+                  @focus="onGoodsSearchFocus"
+                  @blur="onGoodsSearchBlur"
+                />
+                <div v-if="showGoodsDropdown && filteredGoods.length" class="goods-dropdown">
+                  <div v-for="g in filteredGoods" :key="g.id" class="goods-option" @mousedown.prevent="selectGoods(g)">
+                    <img v-if="g.picUrl" :src="g.picUrl" class="thumb" />
+                    <span class="goods-title">{{ g.title }}</span>
+                    <span class="goods-id">¥{{ g.price }}</span>
+                  </div>
+                </div>
+                <a-empty v-else-if="showGoodsDropdown && !loadingGoods" description="无匹配商品" :image="false" />
+              </div>
+            </a-form-item>
+
+            <a-form-item label="发货方式">
+              <a-radio-group v-model:value="formData.deliveryType">
+                <a-radio v-for="t in deliveryTypes" :key="t.value" :value="t.value">{{ t.label }}</a-radio>
+              </a-radio-group>
+            </a-form-item>
+
+            <a-form-item v-if="formData.deliveryType === 'fixed'" label="发货内容" required>
+              <a-textarea v-model:value="formData.deliveryContent" :rows="4" placeholder="买家付款后自动发送的内容" />
+            </a-form-item>
+
+            <template v-else-if="formData.deliveryType === 'stock'">
+              <a-form-item label="库存内容（每行一条）">
+                <a-textarea v-model:value="stockContent" :rows="6" placeholder="每行一条发货内容" />
+                <div class="hint">{{ stockContentCount }} 条</div>
+                <a-upload :show-upload-list="false" :before-upload="onStockFileSelect" accept=".txt">
+                  <a-button size="small" type="link"><template #icon><UploadOutlined /></template>从文件导入</a-button>
+                </a-upload>
+              </a-form-item>
+              <div v-if="editingRule" class="stock-summary">
+                当前库存：{{ editingRuleStock.total }} 条，可用 {{ editingRuleStock.available }} 条
+              </div>
+            </template>
+
+            <template v-else-if="formData.deliveryType === 'api'">
+              <a-form-item label="API 地址" required>
+                <a-input v-model:value="formData.apiUrl" placeholder="https://api.example.com/fetch" />
+              </a-form-item>
+              <a-form-item label="请求方法">
+                <a-radio-group v-model:value="formData.apiMethod">
+                  <a-radio value="GET">GET</a-radio>
+                  <a-radio value="POST">POST</a-radio>
+                </a-radio-group>
+              </a-form-item>
+              <a-form-item label="Headers（JSON）">
+                <a-textarea v-model:value="formData.apiHeaders" :rows="4" class="mono" placeholder='{ "Authorization": "Bearer xxx" }' />
+              </a-form-item>
+              <a-form-item label="请求 Body">
+                <a-textarea v-model:value="formData.apiBody" :rows="4" class="mono" placeholder="POST 请求体" />
+              </a-form-item>
+              <a-form-item label="响应字段">
+                <a-input v-model:value="formData.apiResponseField" placeholder="如：data.code，留空返回完整响应" />
+              </a-form-item>
+            </template>
+
+            <a-form-item label="触发时机">
+              <a-radio-group v-model:value="formData.triggerOn">
+                <a-radio v-for="t in triggerOptions" :key="t.value" :value="t.value">{{ t.label }}</a-radio>
+              </a-radio-group>
+            </a-form-item>
+
+            <a-form-item label="发货流程">
+              <a-select v-model:value="formData.workflowId" allow-clear placeholder="默认流程">
+                <a-select-option v-for="w in workflows" :key="w.id" :value="w.id">{{ w.name }}</a-select-option>
+              </a-select>
+              <a-button size="small" type="link" @click="router.push('/workflow')">管理流程</a-button>
+            </a-form-item>
+
+            <a-form-item>
+              <a-checkbox v-model:checked="formData.enabled">启用此规则</a-checkbox>
+            </a-form-item>
+
+            <a-space>
+              <a-button type="primary" html-type="submit" :loading="saving">
+                <template #icon><component :is="editingRule ? SaveOutlined : PlusOutlined" /></template>
+                {{ editingRule ? '保存' : '添加' }}
+              </a-button>
+              <a-button @click="cancelEdit">取消</a-button>
+            </a-space>
+          </a-form>
+        </div>
+      </div>
+      <div v-else class="detail-empty">
+        <a-empty description="选择一条规则编辑，或点击新建" />
+      </div>
+    </template>
+  </TwoPaneLayout>
+
   <a-modal v-model:open="showStockModal" title="库存管理" :footer="null" width="640px" @cancel="closeStockModal">
     <a-spin :spinning="loadingStock">
       <div class="stock-stats" v-if="stockStats">
@@ -586,24 +594,181 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page-title { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
-.hint { font-size: 12px; color: rgba(0,0,0,0.45); margin-top: 4px; }
-.mono { font-family: monospace; }
-.muted { color: rgba(0,0,0,0.35); }
-.ellipsis { display: inline-block; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.goods-selected { display: flex; align-items: center; gap: 8px; }
-.goods-search-wrap { position: relative; }
-.goods-dropdown {
-  position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; right: 0;
-  max-height: 280px; overflow-y: auto; background: #fff;
-  border: 1px solid #d9d9d9; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wm-border);
+  flex-shrink: 0;
 }
-.goods-option { display: flex; align-items: center; gap: 8px; padding: 6px 10px; cursor: pointer; }
-.goods-option:hover { background: #f5f5f5; }
-.thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
-.goods-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
-.goods-id { font-size: 12px; color: #f5222d; flex-shrink: 0; }
-.stock-summary { font-size: 12px; color: rgba(0,0,0,0.55); margin-bottom: 12px; }
-.stock-stats { display: flex; gap: 32px; margin-bottom: 16px; }
-.stock-actions { margin-bottom: 12px; }
+.list-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wm-text);
+}
+.list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+.rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.rule-row:hover {
+  background: var(--wm-list-hover);
+}
+.rule-row.active {
+  background: var(--wm-list-active);
+}
+.rule-main {
+  flex: 1;
+  min-width: 0;
+}
+.rule-name {
+  font-weight: 500;
+  color: var(--wm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rule-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+.sub-tag {
+  margin: 0;
+}
+.muted {
+  color: var(--wm-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rule-stock {
+  font-size: 11px;
+  color: var(--wm-text-tertiary);
+  margin-top: 2px;
+}
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.detail-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--wm-border);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wm-text);
+  flex-shrink: 0;
+}
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--wm-text-secondary);
+  margin-top: 4px;
+}
+.mono {
+  font-family: monospace;
+}
+.goods-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goods-search-wrap {
+  position: relative;
+}
+.goods-dropdown {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--wm-card-bg);
+  border: 1px solid var(--wm-border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.goods-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.goods-option:hover {
+  background: var(--wm-list-hover);
+}
+.thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.goods-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--wm-text);
+}
+.goods-id {
+  font-size: 12px;
+  color: #f5222d;
+  flex-shrink: 0;
+}
+.stock-summary {
+  font-size: 12px;
+  color: var(--wm-text-secondary);
+  margin-bottom: 12px;
+}
+.stock-stats {
+  display: flex;
+  gap: 32px;
+  margin-bottom: 16px;
+}
+.stock-actions {
+  margin-bottom: 12px;
+}
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
 </style>

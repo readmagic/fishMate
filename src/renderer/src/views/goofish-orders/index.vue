@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, h, watch } from 'vue'
+import { ref, onMounted, onUnmounted, h, watch, computed } from 'vue'
 import { Modal, message } from 'ant-design-vue'
 import {
   ReloadOutlined,
@@ -12,6 +12,7 @@ import { orderService, accountService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
 import { ORDER_STATUS_TEXT, OrderStatus } from '@/core/types'
 import type { Order, Account } from '@/core/types'
+import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 
 const pushStore = usePushStore()
 const loading = ref(false)
@@ -27,6 +28,8 @@ const total = ref(0)
 const offset = ref(0)
 const limit = 20
 
+const selectedOrderId = ref<string | null>(null)
+const manualVisible = ref(false)
 const manualOrderId = ref('')
 const manualAccountId = ref('')
 const fetching = ref(false)
@@ -42,6 +45,7 @@ const statusOptions = [
 ]
 
 const orders = ref<Order[]>([])
+const selectedOrder = computed(() => orders.value.find((o) => o.orderId === selectedOrderId.value) || null)
 
 function statusText(s: number) {
   return ORDER_STATUS_TEXT[s] || '未知'
@@ -82,6 +86,9 @@ async function loadOrders() {
     )
     orders.value = res.orders
     total.value = res.total
+    if (selectedOrderId.value && !orders.value.some((o) => o.orderId === selectedOrderId.value)) {
+      selectedOrderId.value = null
+    }
   } catch (e) {
     console.error('加载订单列表失败', e)
   } finally {
@@ -106,6 +113,7 @@ watch(() => pushStore.orders, onWsUpdate, { deep: true })
 
 function onFilterChange() {
   offset.value = 0
+  selectedOrderId.value = null
   loadOrders()
   subscribeWS()
 }
@@ -164,6 +172,7 @@ function deleteOrder(order: Order) {
         if (res.success) {
           orders.value = orders.value.filter((o) => o.orderId !== order.orderId)
           total.value -= 1
+          if (selectedOrderId.value === order.orderId) selectedOrderId.value = null
         } else {
           message.error(res.error || '删除失败')
         }
@@ -183,7 +192,9 @@ async function fetchManualOrder() {
     if (res.success) {
       message.success('获取成功')
       manualOrderId.value = ''
+      manualVisible.value = false
       await loadOrders()
+      selectedOrderId.value = orderId
     } else {
       message.error(res.error || '获取订单失败')
     }
@@ -195,25 +206,17 @@ async function fetchManualOrder() {
 function prevPage() {
   if (offset.value > 0) {
     offset.value = Math.max(0, offset.value - limit)
+    selectedOrderId.value = null
     loadOrders()
   }
 }
 function nextPage() {
   if (offset.value + limit < total.value) {
     offset.value += limit
+    selectedOrderId.value = null
     loadOrders()
   }
 }
-
-const columns = [
-  { title: '商品', dataIndex: 'itemTitle', key: 'item' },
-  { title: '订单号', dataIndex: 'orderId', key: 'orderId' },
-  { title: '买家', key: 'buyer' },
-  { title: '金额', key: 'price' },
-  { title: '状态', key: 'status' },
-  { title: '时间', key: 'time' },
-  { title: '操作', key: 'action', width: 180 }
-]
 
 onMounted(() => {
   loadAccounts()
@@ -226,38 +229,132 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <a-card class="filter-bar">
-    <a-space wrap>
-      <span class="filter-label">账号：</span>
-      <a-select v-model:value="selectedAccountId" style="width: 180px" @change="onFilterChange">
-        <a-select-option value="">全部账号</a-select-option>
-        <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
-          {{ a.nickname || a.id }}
-        </a-select-option>
-      </a-select>
-      <span class="filter-label">状态：</span>
-      <a-select
-        v-model:value="selectedStatus"
-        style="width: 140px"
-        @change="onFilterChange"
-      >
-        <a-select-option v-for="opt in statusOptions" :key="String(opt.value)" :value="opt.value">
-          {{ opt.label }}
-        </a-select-option>
-      </a-select>
-      <a-button :loading="loading" @click="loadOrders">
-        <template #icon><ReloadOutlined /></template>
-        刷新
-      </a-button>
-      <span class="total-text">共 {{ total }} 条订单</span>
-    </a-space>
-  </a-card>
+  <TwoPaneLayout :list-width="340">
+    <template #list>
+      <div class="list-header">
+        <a-select v-model:value="selectedAccountId" style="width: 110px" @change="onFilterChange">
+          <a-select-option value="">全部账号</a-select-option>
+          <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
+            {{ a.nickname || a.id }}
+          </a-select-option>
+        </a-select>
+        <a-select v-model:value="selectedStatus" style="width: 100px" @change="onFilterChange">
+          <a-select-option v-for="opt in statusOptions" :key="String(opt.value)" :value="opt.value">
+            {{ opt.label }}
+          </a-select-option>
+        </a-select>
+        <a-button size="small" :loading="loading" @click="loadOrders">
+          <template #icon><ReloadOutlined /></template>
+        </a-button>
+        <a-button size="small" @click="manualVisible = true">
+          <template #icon><DownloadOutlined /></template>
+          获取
+        </a-button>
+      </div>
+      <div class="list-meta">共 {{ total }} 条订单</div>
+      <div class="list-scroll">
+        <a-spin :spinning="loading">
+          <a-empty v-if="orders.length === 0" description="暂无订单" />
+          <div v-else class="order-list">
+            <div
+              v-for="order in orders"
+              :key="order.orderId"
+              class="order-row"
+              :class="{ active: selectedOrderId === order.orderId }"
+              @click="selectedOrderId = order.orderId"
+            >
+              <img v-if="order.itemPicUrl" :src="order.itemPicUrl" class="thumb" />
+              <div v-else class="thumb thumb-empty" />
+              <div class="row-meta">
+                <div class="row-title">{{ order.itemTitle || '未知商品' }}</div>
+                <div class="row-sub mono">{{ order.orderId }}</div>
+                <div class="row-bottom">
+                  <span class="buyer">{{ order.buyerNickname || order.buyerUserId || '-' }}</span>
+                  <span class="price">¥{{ order.price || '-' }}</span>
+                  <a-tag :color="statusColor(order.status)" class="status-tag">
+                    {{ statusText(order.status) }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+          </div>
+        </a-spin>
+      </div>
+      <div v-if="total > limit" class="pagination">
+        <a-button size="small" :disabled="offset === 0" @click="prevPage">上一页</a-button>
+        <span class="page-info">{{ offset / limit + 1 }} / {{ Math.ceil(total / limit) }}</span>
+        <a-button size="small" :disabled="offset + limit >= total" @click="nextPage">下一页</a-button>
+      </div>
+    </template>
 
-  <a-card class="manual-bar">
-    <a-space wrap align="end">
-      <SearchOutlined />
-      <span class="filter-label">手动获取订单</span>
-      <a-select v-model:value="manualAccountId" style="width: 180px" placeholder="选择账号">
+    <template #detail>
+      <div v-if="selectedOrder" class="detail-wrap">
+        <div class="detail-body">
+          <div class="detail-top">
+            <img v-if="selectedOrder.itemPicUrl" :src="selectedOrder.itemPicUrl" class="detail-thumb" />
+            <div v-else class="detail-thumb thumb-empty" />
+            <div class="detail-top-meta">
+              <h2 class="detail-title">{{ selectedOrder.itemTitle || '未知商品' }}</h2>
+              <a-tag :color="statusColor(selectedOrder.status)">
+                {{ statusText(selectedOrder.status) }}
+              </a-tag>
+            </div>
+          </div>
+
+          <div class="meta-grid">
+            <div class="meta-item"><span class="meta-label">订单号</span><span class="meta-val mono">{{ selectedOrder.orderId }}</span></div>
+            <div class="meta-item"><span class="meta-label">买家</span><span class="meta-val">{{ selectedOrder.buyerNickname || selectedOrder.buyerUserId || '-' }}</span></div>
+            <div class="meta-item"><span class="meta-label">金额</span><span class="meta-val price">¥{{ selectedOrder.price || '-' }}</span></div>
+            <div class="meta-item"><span class="meta-label">账号</span><span class="meta-val">{{ accountNickname(selectedOrder.accountId) }}</span></div>
+            <div class="meta-item"><span class="meta-label">下单时间</span><span class="meta-val">{{ formatTime(selectedOrder.orderTime) }}</span></div>
+            <div v-if="selectedOrder.payTime" class="meta-item"><span class="meta-label">付款时间</span><span class="meta-val">{{ formatTime(selectedOrder.payTime) }}</span></div>
+            <div v-if="selectedOrder.shipTime" class="meta-item"><span class="meta-label">发货时间</span><span class="meta-val">{{ formatTime(selectedOrder.shipTime) }}</span></div>
+            <div v-if="selectedOrder.completeTime" class="meta-item"><span class="meta-label">完成时间</span><span class="meta-val">{{ formatTime(selectedOrder.completeTime) }}</span></div>
+          </div>
+
+          <div class="detail-actions">
+            <a-space wrap>
+              <a-dropdown v-if="selectedOrder.status === OrderStatus.PENDING_SHIPMENT">
+                <a-button type="primary" :loading="shipping === selectedOrder.orderId">
+                  <template #icon><SendOutlined /></template>
+                  发货
+                </a-button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item @click="confirmShip(selectedOrder, false)">发货</a-menu-item>
+                    <a-menu-item @click="confirmShip(selectedOrder, true)">免拼发货</a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+              <a-button
+                v-if="selectedOrder.status !== OrderStatus.CLOSED"
+                :loading="refreshing === selectedOrder.orderId"
+                @click="refreshOrder(selectedOrder)"
+              >
+                <template #icon><ReloadOutlined /></template>
+                刷新
+              </a-button>
+              <a-button
+                danger
+                :loading="deleting === selectedOrder.orderId"
+                @click="deleteOrder(selectedOrder)"
+              >
+                <template #icon><DeleteOutlined /></template>
+                删除
+              </a-button>
+            </a-space>
+          </div>
+        </div>
+      </div>
+      <div v-else class="detail-empty">
+        <a-empty description="选择一个订单查看详情" />
+      </div>
+    </template>
+  </TwoPaneLayout>
+
+  <a-modal v-model:open="manualVisible" title="手动获取订单" @ok="fetchManualOrder" :confirm-loading="fetching">
+    <a-space direction="vertical" style="width: 100%">
+      <a-select v-model:value="manualAccountId" style="width: 100%" placeholder="选择账号">
         <a-select-option v-for="a in accounts" :key="a.id" :value="a.id">
           {{ a.nickname || a.id }}
         </a-select-option>
@@ -265,165 +362,181 @@ onUnmounted(() => {
       <a-input
         v-model:value="manualOrderId"
         placeholder="输入订单号"
-        style="width: 240px"
         @press-enter="fetchManualOrder"
       />
-      <a-button
-        type="primary"
-        :loading="fetching"
-        :disabled="!manualOrderId || !manualAccountId"
-        @click="fetchManualOrder"
-      >
-        <template #icon><DownloadOutlined /></template>
-        获取
-      </a-button>
     </a-space>
-  </a-card>
-
-  <a-card>
-    <a-table
-      :columns="columns"
-      :data-source="orders"
-      :loading="loading"
-      :pagination="false"
-      row-key="orderId"
-      size="middle"
-      :scroll="{ x: 900 }"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'item'">
-          <div class="goods-cell">
-            <img v-if="record.itemPicUrl" :src="record.itemPicUrl" class="thumb" />
-            <div class="goods-meta">
-              <div class="goods-title">{{ record.itemTitle || '未知商品' }}</div>
-              <div class="goods-account">{{ accountNickname(record.accountId) }}</div>
-            </div>
-          </div>
-        </template>
-        <template v-else-if="column.key === 'orderId'">
-          <span class="mono">{{ record.orderId }}</span>
-        </template>
-        <template v-else-if="column.key === 'buyer'">
-          {{ record.buyerNickname || record.buyerUserId || '-' }}
-        </template>
-        <template v-else-if="column.key === 'price'">
-          <span class="price">¥{{ record.price || '-' }}</span>
-        </template>
-        <template v-else-if="column.key === 'status'">
-          <a-tag :color="statusColor(record.status)">{{ statusText(record.status) }}</a-tag>
-        </template>
-        <template v-else-if="column.key === 'time'">
-          <div class="time-cell">
-            <div>下单：{{ formatTime(record.orderTime) }}</div>
-            <div v-if="record.payTime">付款：{{ formatTime(record.payTime) }}</div>
-            <div v-if="record.shipTime">发货：{{ formatTime(record.shipTime) }}</div>
-            <div v-if="record.completeTime">完成：{{ formatTime(record.completeTime) }}</div>
-          </div>
-        </template>
-        <template v-else-if="column.key === 'action'">
-          <a-space size="small">
-            <a-dropdown v-if="record.status === OrderStatus.PENDING_SHIPMENT">
-              <a-button type="primary" size="small" :loading="shipping === record.orderId">
-                <template #icon><SendOutlined /></template>
-              </a-button>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item @click="confirmShip(record, false)">发货</a-menu-item>
-                  <a-menu-item @click="confirmShip(record, true)">免拼发货</a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-            <a-button
-              v-if="record.status !== OrderStatus.CLOSED"
-              size="small"
-              :loading="refreshing === record.orderId"
-              @click="refreshOrder(record)"
-            >
-              <template #icon><ReloadOutlined /></template>
-            </a-button>
-            <a-button
-              size="small"
-              danger
-              :loading="deleting === record.orderId"
-              @click="deleteOrder(record)"
-            >
-              <template #icon><DeleteOutlined /></template>
-            </a-button>
-          </a-space>
-        </template>
-      </template>
-      <template #emptyText>
-        <a-empty description="暂无订单数据，订单会在收到交易消息时自动记录" />
-      </template>
-    </a-table>
-
-    <div v-if="total > limit" class="pagination">
-      <a-button size="small" :disabled="offset === 0" @click="prevPage">上一页</a-button>
-      <span class="page-info">{{ offset / limit + 1 }} / {{ Math.ceil(total / limit) }}</span>
-      <a-button size="small" :disabled="offset + limit >= total" @click="nextPage">下一页</a-button>
-    </div>
-  </a-card>
+  </a-modal>
 </template>
 
 <style scoped>
-.filter-bar,
-.manual-bar {
-  margin-bottom: 12px;
-}
-.filter-label {
-  color: rgba(0, 0, 0, 0.55);
-}
-.total-text {
-  margin-left: auto;
-  color: rgba(0, 0, 0, 0.55);
-}
-.goods-cell {
+.list-header {
   display: flex;
-  gap: 8px;
   align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wm-border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.list-meta {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--wm-text-secondary);
+  border-bottom: 1px solid var(--wm-border);
+  flex-shrink: 0;
+}
+.list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+  min-height: 0;
+}
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.order-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.order-row:hover {
+  background: var(--wm-list-hover);
+}
+.order-row.active {
+  background: var(--wm-list-active);
 }
 .thumb {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   object-fit: cover;
   border-radius: 4px;
   flex-shrink: 0;
 }
-.goods-meta {
+.thumb-empty {
+  background: var(--wm-content-bg);
+}
+.row-meta {
+  flex: 1;
   min-width: 0;
 }
-.goods-title {
+.row-title {
+  font-size: 13px;
   font-weight: 500;
+  color: var(--wm-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
 }
-.goods-account {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+.row-sub {
+  font-size: 11px;
+  color: var(--wm-text-tertiary);
+  margin: 2px 0;
 }
-.mono {
-  font-family: monospace;
+.row-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.buyer {
   font-size: 12px;
+  color: var(--wm-text-secondary);
 }
 .price {
-  color: #1677ff;
+  color: #f5222d;
   font-weight: 600;
+  font-size: 13px;
 }
-.time-cell {
-  font-size: 12px;
-  color: rgba(0, 0, 0, 0.55);
-  line-height: 1.6;
+.status-tag {
+  margin: 0 0 0 auto;
 }
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--wm-border);
+  flex-shrink: 0;
 }
 .page-info {
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--wm-text-secondary);
+  font-size: 12px;
+}
+
+.detail-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+.detail-top {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.detail-thumb {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.detail-top-meta {
+  flex: 1;
+  min-width: 0;
+}
+.detail-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--wm-text);
+  line-height: 1.4;
+}
+.meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--wm-content-bg);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.meta-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.meta-label {
+  color: var(--wm-text-secondary);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.meta-val {
+  color: var(--wm-text);
+  font-size: 13px;
+  text-align: right;
+  word-break: break-all;
+}
+.mono {
+  font-family: monospace;
+  font-size: 12px;
+}
+.detail-actions {
+  margin-top: 8px;
+}
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 </style>

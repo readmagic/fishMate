@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { ReloadOutlined, ArrowLeftOutlined } from '@ant-design/icons-vue'
+import { ReloadOutlined } from '@ant-design/icons-vue'
 import { conversationService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
+import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 import type { Conversation } from '@/core/types'
 
 const pushStore = usePushStore()
@@ -122,9 +123,8 @@ async function loadMoreMessages() {
   }
 }
 
-function closeConversation() {
-  selected.value = null
-  hasMoreMessages.value = true
+function isActiveConv(conv: Conversation) {
+  return selected.value?.accountId === conv.accountId && selected.value?.chatId === conv.chatId
 }
 
 function formatTime(ts: number) {
@@ -139,114 +139,247 @@ function formatTime(ts: number) {
 
 onMounted(loadConversations)
 onUnmounted(() => {
-  pushStore.unsubscribeConversations()
+  // 不取消订阅：AppSidebar 全局常驻订阅供未读角标，此处仅重置本地 flag
   wsSubscribed = false
 })
 </script>
 
 <template>
-  <!-- 对话列表 -->
-  <a-card v-if="!selected">
-    <template #title>
-      对话消息 <span class="count">({{ total }})</span>
-    </template>
-    <template #extra>
-      <a-button :loading="loading" @click="loadConversations">
-        <template #icon><ReloadOutlined /></template>
-      </a-button>
-    </template>
-
-    <a-spin :spinning="loading">
-      <a-empty v-if="conversations.length === 0" description="暂无对话消息" />
-      <div v-else class="conv-list">
-        <div
-          v-for="conv in conversations"
-          :key="conv.accountId + conv.chatId"
-          class="conv-item"
-          @click="openConversation(conv)"
-        >
-          <a-avatar v-if="conv.userAvatar" :src="conv.userAvatar" />
-          <a-avatar v-else>{{ conv.userName.charAt(0) }}</a-avatar>
-          <div class="conv-meta">
-            <div class="conv-top">
-              <span class="conv-name">{{ conv.userName }}</span>
-              <a-tag color="default">{{ conv.accountNickname }}</a-tag>
-              <span class="conv-time">{{ formatTime(conv.lastTime) }}</span>
-            </div>
-            <p class="conv-last">{{ conv.lastMessage }}</p>
-          </div>
-          <a-badge v-if="conv.unread > 0" :count="conv.unread" />
-        </div>
-      </div>
-
-      <div v-if="hasMore" class="load-more">
-        <a-button :loading="loadingMore" @click="loadMoreConversations">加载更多</a-button>
-      </div>
-    </a-spin>
-  </a-card>
-
-  <!-- 对话详情 -->
-  <a-card v-else>
-    <template #title>
-      <a-space>
-        <a-button shape="circle" size="small" @click="closeConversation">
-          <template #icon><ArrowLeftOutlined /></template>
+  <TwoPaneLayout :list-width="300">
+    <template #list>
+      <div class="list-header">
+        <span class="list-title">对话消息 <span class="count">({{ total }})</span></span>
+        <a-button size="small" :loading="loading" @click="loadConversations">
+          <template #icon><ReloadOutlined /></template>
         </a-button>
-        <a-avatar v-if="selected.userAvatar" :src="selected.userAvatar" />
-        <a-avatar v-else>{{ selected.userName.charAt(0) }}</a-avatar>
-        <div>
-          <a-space align="center">
-            <span class="conv-name">{{ selected.userName }}</span>
-            <a-tag color="default">{{ selected.accountNickname }}</a-tag>
-            <span class="msg-count">({{ selected.messageCount }} 条消息)</span>
-          </a-space>
-          <div class="chat-id">chatId: {{ selected.chatId }}</div>
-        </div>
-      </a-space>
+      </div>
+      <div class="list-scroll">
+        <a-spin :spinning="loading">
+          <a-empty v-if="conversations.length === 0" description="暂无对话消息" />
+          <div v-else class="conv-list">
+            <div
+              v-for="conv in conversations"
+              :key="conv.accountId + conv.chatId"
+              class="conv-item"
+              :class="{ active: isActiveConv(conv) }"
+              @click="openConversation(conv)"
+            >
+              <a-avatar v-if="conv.userAvatar" :src="conv.userAvatar" />
+              <a-avatar v-else>{{ conv.userName.charAt(0) }}</a-avatar>
+              <div class="conv-meta">
+                <div class="conv-top">
+                  <span class="conv-name">{{ conv.userName }}</span>
+                  <a-tag color="default">{{ conv.accountNickname }}</a-tag>
+                  <span class="conv-time">{{ formatTime(conv.lastTime) }}</span>
+                </div>
+                <p class="conv-last">{{ conv.lastMessage }}</p>
+              </div>
+              <a-badge v-if="conv.unread > 0" :count="conv.unread" />
+            </div>
+          </div>
+
+          <div v-if="hasMore" class="load-more">
+            <a-button :loading="loadingMore" @click="loadMoreConversations">加载更多</a-button>
+          </div>
+        </a-spin>
+      </div>
     </template>
 
-    <div v-if="hasMoreMessages" class="load-more">
-      <a-button size="small" :loading="loadingMoreMessages" @click="loadMoreMessages">加载更早消息</a-button>
-    </div>
-
-    <div ref="messagesContainer" class="msg-list">
-      <div
-        v-for="msg in selected.messages"
-        :key="msg.id"
-        class="msg-row"
-        :class="msg.direction === 'in' ? 'msg-in' : 'msg-out'"
-      >
-        <div class="msg-header">
-          <span class="msg-sender">{{ msg.senderName }}</span>
-          <time class="msg-time">{{ msg.msgTime }}</time>
-          <span v-if="msg.msgId" class="msg-id">{{ msg.msgId.substring(0, 8) }}</span>
+    <template #detail>
+      <div v-if="selected" class="detail-wrap">
+        <div class="detail-header">
+          <a-avatar v-if="selected.userAvatar" :src="selected.userAvatar" />
+          <a-avatar v-else>{{ selected.userName.charAt(0) }}</a-avatar>
+          <div class="detail-meta">
+            <div class="detail-top">
+              <span class="conv-name">{{ selected.userName }}</span>
+              <a-tag color="default">{{ selected.accountNickname }}</a-tag>
+              <span class="msg-count">({{ selected.messageCount }} 条消息)</span>
+            </div>
+            <div class="chat-id">chatId: {{ selected.chatId }}</div>
+          </div>
         </div>
-        <div class="msg-bubble" :class="msg.direction === 'out' ? 'bubble-out' : ''">{{ msg.content }}</div>
+
+        <div v-if="hasMoreMessages" class="load-more">
+          <a-button size="small" :loading="loadingMoreMessages" @click="loadMoreMessages">加载更早消息</a-button>
+        </div>
+
+        <div ref="messagesContainer" class="msg-list">
+          <div
+            v-for="msg in selected.messages"
+            :key="msg.id"
+            class="msg-row"
+            :class="msg.direction === 'in' ? 'msg-in' : 'msg-out'"
+          >
+            <div class="msg-header">
+              <span class="msg-sender">{{ msg.senderName }}</span>
+              <time class="msg-time">{{ msg.msgTime }}</time>
+              <span v-if="msg.msgId" class="msg-id">{{ msg.msgId.substring(0, 8) }}</span>
+            </div>
+            <div class="msg-bubble" :class="msg.direction === 'out' ? 'bubble-out' : ''">{{ msg.content }}</div>
+          </div>
+        </div>
       </div>
-    </div>
-  </a-card>
+      <div v-else class="detail-empty">
+        <a-empty description="选择一个对话查看消息" />
+      </div>
+    </template>
+  </TwoPaneLayout>
 </template>
 
 <style scoped>
-.count { font-size: 13px; color: rgba(0,0,0,0.45); font-weight: normal; }
-.conv-list { display: flex; flex-direction: column; gap: 4px; }
-.conv-item { display: flex; align-items: center; gap: 12px; padding: 12px 8px; cursor: pointer; border-radius: 6px; }
-.conv-item:hover { background: rgba(0,0,0,0.03); }
-.conv-meta { flex: 1; min-width: 0; }
-.conv-top { display: flex; align-items: center; gap: 8px; }
-.conv-name { font-weight: 600; }
-.conv-time { margin-left: auto; font-size: 12px; color: rgba(0,0,0,0.45); }
-.conv-last { margin: 2px 0 0; font-size: 13px; color: rgba(0,0,0,0.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.load-more { text-align: center; margin: 12px 0; }
-.msg-count { font-size: 12px; color: rgba(0,0,0,0.45); }
-.chat-id { font-family: monospace; font-size: 11px; color: rgba(0,0,0,0.35); }
-.msg-list { display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding: 8px; }
-.msg-row { display: flex; flex-direction: column; }
-.msg-in { align-items: flex-start; }
-.msg-out { align-items: flex-end; }
-.msg-header { font-size: 11px; color: rgba(0,0,0,0.45); display: flex; gap: 6px; margin-bottom: 2px; }
-.msg-sender { font-weight: 500; }
-.msg-id { font-family: monospace; opacity: 0.5; font-size: 10px; }
-.msg-bubble { padding: 8px 12px; border-radius: 8px; background: #f5f5f5; max-width: 70%; word-break: break-all; }
-.bubble-out { background: #1677ff; color: #fff; }
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--wm-border);
+  flex-shrink: 0;
+}
+.list-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--wm-text);
+}
+.count {
+  font-size: 13px;
+  color: var(--wm-text-secondary);
+  font-weight: normal;
+}
+.list-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+.conv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.conv-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.conv-item:hover {
+  background: var(--wm-list-hover);
+}
+.conv-item.active {
+  background: var(--wm-list-active);
+}
+.conv-meta {
+  flex: 1;
+  min-width: 0;
+}
+.conv-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.conv-name {
+  font-weight: 600;
+  color: var(--wm-text);
+}
+.conv-time {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--wm-text-secondary);
+}
+.conv-last {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--wm-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.load-more {
+  text-align: center;
+  margin: 8px 0;
+  flex-shrink: 0;
+}
+
+.detail-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--wm-border);
+  flex-shrink: 0;
+}
+.detail-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.msg-count {
+  font-size: 12px;
+  color: var(--wm-text-secondary);
+}
+.chat-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--wm-text-tertiary);
+}
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+.msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 0;
+}
+.msg-row {
+  display: flex;
+  flex-direction: column;
+}
+.msg-in {
+  align-items: flex-start;
+}
+.msg-out {
+  align-items: flex-end;
+}
+.msg-header {
+  font-size: 11px;
+  color: var(--wm-text-secondary);
+  display: flex;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.msg-sender {
+  font-weight: 500;
+}
+.msg-id {
+  font-family: monospace;
+  opacity: 0.5;
+  font-size: 10px;
+}
+.msg-bubble {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--wm-bubble-in);
+  color: var(--wm-text);
+  max-width: 70%;
+  word-break: break-all;
+}
+.bubble-out {
+  background: var(--wm-bubble-out);
+  color: #fff;
+}
 </style>

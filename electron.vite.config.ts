@@ -30,7 +30,7 @@ export default defineConfig({
     resolve: {
       alias: { '@': fileURLToPath(new URL('./src/renderer/src', import.meta.url)) }
     },
-    plugins: [vue()],
+    plugins: [vue({ template: { compilerOptions: { isCustomElement: (tag) => tag === 'webview' } } })],
     server: { port: 5173 }
   }
 })

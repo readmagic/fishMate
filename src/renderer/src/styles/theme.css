@@ -1,0 +1,80 @@
+/**
+ * 微信桌面版配色系统
+ * useThemeStore 已在 <html> 设置 data-theme="light"|"dark"，此处消费该属性。
+ */
+:root[data-theme='light'] {
+  --wm-rail-bg: #2e2e2e;
+  --wm-rail-icon: #a8a8a8;
+  --wm-rail-icon-hover: #ffffff;
+  --wm-rail-hover-bg: #3a3a3a;
+  --wm-rail-active-bg: #3d3d3d;
+
+  --wm-content-bg: #f5f5f5;
+  --wm-card-bg: #ffffff;
+  --wm-card-border: #e7e7e7;
+  --wm-card-radius: 8px;
+
+  --wm-text: #1a1a1a;
+  --wm-text-secondary: rgba(0, 0, 0, 0.55);
+  --wm-text-tertiary: rgba(0, 0, 0, 0.35);
+  --wm-border: #e7e7e7;
+
+  --wm-primary: #07c160;
+  --wm-primary-hover: #06ad56;
+
+  --wm-bubble-in: #ffffff;
+  --wm-bubble-out: #95ec69;
+
+  --wm-list-hover: rgba(0, 0, 0, 0.03);
+  --wm-list-active: #dcdcdc;
+
+  --wm-rail-width: 60px;
+  --wm-list-width: 300px;
+  --wm-header-height: 40px;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --wm-rail-bg: #1e1e1e;
+  --wm-rail-icon: #8a8a8a;
+  --wm-rail-icon-hover: #e0e0e0;
+  --wm-rail-hover-bg: #2a2a2a;
+  --wm-rail-active-bg: #262626;
+
+  --wm-content-bg: #1a1a1a;
+  --wm-card-bg: #2a2a2a;
+  --wm-card-border: #3a3a3a;
+  --wm-card-radius: 8px;
+
+  --wm-text: #e8e8e8;
+  --wm-text-secondary: rgba(255, 255, 255, 0.55);
+  --wm-text-tertiary: rgba(255, 255, 255, 0.35);
+  --wm-border: #333333;
+
+  --wm-primary: #07c160;
+  --wm-primary-hover: #06ad56;
+
+  --wm-bubble-in: #2a2a2a;
+  --wm-bubble-out: #07c160;
+
+  --wm-list-hover: rgba(255, 255, 255, 0.05);
+  --wm-list-active: #333333;
+
+  --wm-rail-width: 60px;
+  --wm-list-width: 300px;
+  --wm-header-height: 40px;
+
+  color-scheme: dark;
+}
+
+/* 兜底：未设置 data-theme 时按浅色 */
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--wm-content-bg);
+  color: var(--wm-text);
+}

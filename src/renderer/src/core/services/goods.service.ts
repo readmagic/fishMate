@@ -7,5 +7,8 @@ export const goodsService = {
   },
   getAccountGoods(accountId: string, page = 1) {
     return invoke<GoodsListResponse>('goods:byAccount', { id: accountId, page })
+  },
+  injectCookies(accountId?: string) {
+    return invoke<{ success: boolean }>('goods:injectCookies', { accountId })
   }
 }

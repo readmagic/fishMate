@@ -10,6 +10,9 @@ import { appEvents, Events } from './shared/core/event-emitter.js'
 
 const logger = createLogger('Main')
 
+// 关闭 Blink 自动化标记，使 webview 的 navigator.webdriver=false，规避闲鱼滑动验证检测
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // dev 抑制 Electron 安全告警（Vite HMR 必需 unsafe-eval；生产已注入严格 CSP）
@@ -116,7 +119,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webviewTag: true
     }
   })
 
