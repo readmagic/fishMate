@@ -8,6 +8,7 @@ import {
     getConversation,
     upsertConversation,
     updateConversationAvatar,
+    resetConversationUnread,
     markConversationRead,
     deleteConversation as deleteConversationDb,
     setConversationHidden as setConversationHiddenDb,
@@ -93,6 +94,8 @@ export function addOutgoingMessage(
         lastTime: timestamp,
         unread: 0
     }, false)
+    // upsert 的 unread 是增量语义（+0 不变），发送时需绝对置零
+    resetConversationUnread(accountId, chatId)
 
     // 添加消息，触发事件（自己发的消息不触发 NEW_MESSAGE，不闪烁不响铃）
     addConversationMessage({
@@ -126,6 +129,8 @@ export function addRemoteOutgoingMessage(accountId: string, msg: ChatMessage) {
         lastTime: timestamp,
         unread: 0
     }, false)
+    // upsert 的 unread 是增量语义（+0 不变），发送时需绝对置零
+    resetConversationUnread(accountId, msg.chatId)
 
     addConversationMessage({
         accountId,

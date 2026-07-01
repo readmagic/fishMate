@@ -302,6 +302,7 @@ async function send() {
       conv.lastMessage = text
       conv.lastTime = Date.now()
       draft.value = ''
+      clearCurrentUnread()
       await nextTick()
       scrollToBottom()
     } else {
@@ -356,6 +357,17 @@ function pushOutMsg(content: string, contentType: number, extra?: Record<string,
   nextTick(() => scrollToBottom())
 }
 
+// 发送成功后清掉当前会话未读红数字（后端 addOutgoing 已清 DB，但列表项是旧数据）
+function clearCurrentUnread() {
+  const conv = selected.value
+  if (!conv) return
+  conv.unread = 0
+  const li = conversations.value.find(
+    (c) => c.accountId === conv.accountId && c.chatId === conv.chatId
+  )
+  if (li) li.unread = 0
+}
+
 // 选表情：把 [表情名] 插入输入框，随文本一起发（ctype=1），收方 IM 实时渲染成图
 function onPickSticker(s: { name: string }) {
   draft.value += s.name
@@ -376,7 +388,7 @@ async function onPickImage(e: Event) {
     const filePath = window.api.getPathForFile(file)
     if (!filePath) { message.error('无法获取文件路径'); return }
     const res = await conversationService.sendImage(conv.accountId, conv.chatId, conv.userId, filePath)
-    if (res.success) pushOutMsg('[图片]', 2)
+    if (res.success) { pushOutMsg('[图片]', 2); clearCurrentUnread() }
     else message.error(res.error || '发送失败')
   } catch {
     message.error('发送图片失败')
@@ -391,7 +403,7 @@ async function onCaptureScreen() {
   loadingAction.value = 'screen'
   try {
     const res = await conversationService.captureScreen(conv.accountId, conv.chatId, conv.userId)
-    if (res.success) pushOutMsg('[截图]', 2)
+    if (res.success) { pushOutMsg('[截图]', 2); clearCurrentUnread() }
     else message.error(res.error || '截图失败')
   } finally {
     loadingAction.value = null

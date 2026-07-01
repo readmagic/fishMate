@@ -38,6 +38,7 @@ export {
     getConversation,
     upsertConversation,
     updateConversationAvatar,
+    resetConversationUnread,
     markConversationRead,
     deleteConversation,
     setConversationHidden,

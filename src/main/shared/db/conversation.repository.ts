@@ -64,6 +64,12 @@ export function updateConversationAvatar(accountId: string, chatId: string, avat
     stmt.run(avatar, accountId, chatId)
 }
 
+// 绝对置零未读（upsertConversation 的 unread 是增量语义，发送消息时需直接置零）
+export function resetConversationUnread(accountId: string, chatId: string) {
+    const stmt = db.prepare('UPDATE conversations SET unread = 0 WHERE account_id = ? AND chat_id = ?')
+    stmt.run(accountId, chatId)
+}
+
 // 标记已读
 export function markConversationRead(accountId: string, chatId: string) {
     const stmt = db.prepare('UPDATE conversations SET unread = 0 WHERE account_id = ? AND chat_id = ?')
