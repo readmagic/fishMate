@@ -5,9 +5,9 @@ node_modules/
 dist/
 release/
 
-# Data
-data/
-logs/
+# Data（仅根目录运行时数据，避免误伤 src 下的 data/ 资源目录）
+/data/
+/logs/
 
 # IDE
 .vscode/
