@@ -211,10 +211,12 @@ function createWindow() {
     }
   })
 
+  // 在窗口存活时捕获 webContents.id，供 closed 回调使用——窗口销毁后访问
+  // mainWindow.webContents 会抛 "Object has been destroyed"
+  const wcId = mainWindow.webContents.id
+
   mainWindow.on('closed', () => {
-    if (mainWindow) {
-      clearPushSubscription(mainWindow.webContents.id)
-    }
+    clearPushSubscription(wcId)
     mainWindow = null
   })
 }
