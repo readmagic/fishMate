@@ -23,6 +23,16 @@ import type {
     ConversationMessage
 } from '../types/index.js'
 
+// 安全解析 extra JSON（损坏时返回 undefined，不抛异常）
+function safeParseExtra(raw: string): Record<string, unknown> | undefined {
+    try {
+        const v = JSON.parse(raw)
+        return typeof v === 'object' && v ? v as Record<string, unknown> : undefined
+    } catch {
+        return undefined
+    }
+}
+
 /**
  * 添加收到的消息
  */
@@ -50,7 +60,9 @@ export function addIncomingMessage(accountId: string, msg: ChatMessage) {
         content: msg.content,
         msgTime: msg.msgTime,
         msgId: msg.msgId,
-        direction: 'in'
+        direction: 'in',
+        contentType: msg.contentType ?? 1,
+        extra: msg.extra
     })
 }
 
@@ -61,7 +73,8 @@ export function addOutgoingMessage(
     accountId: string,
     chatId: string,
     toUserId: string,
-    content: string
+    content: string,
+    opts?: { contentType?: number; extra?: Record<string, unknown> }
 ) {
     const timestamp = Date.now()
     const conv = getConversation(accountId, chatId)
@@ -81,7 +94,7 @@ export function addOutgoingMessage(
         unread: 0
     }, false)
 
-    // 添加消息，触发事件
+    // 添加消息，触发事件（自己发的消息不触发 NEW_MESSAGE，不闪烁不响铃）
     addConversationMessage({
         accountId,
         chatId,
@@ -89,8 +102,43 @@ export function addOutgoingMessage(
         senderName,
         content,
         msgTime: new Date().toLocaleString('zh-CN', { hour12: false }),
-        direction: 'out'
-    })
+        direction: 'out',
+        contentType: opts?.contentType ?? 1,
+        extra: opts?.extra
+    }, false)
+}
+
+/**
+ * 记录自己在其它端（手机 App）发出的消息
+ * 只追加到已存在的会话；不增未读、不触发 NEW_MESSAGE（不闪烁不响铃）
+ */
+export function addRemoteOutgoingMessage(accountId: string, msg: ChatMessage) {
+    const existing = getConversation(accountId, msg.chatId)
+    if (!existing) return // 会话不存在（对方未发起过对话），暂不创建，等对方消息来再建
+
+    const timestamp = Date.now()
+    upsertConversation({
+        accountId,
+        chatId: msg.chatId,
+        userId: existing.user_id,
+        userName: existing.user_name,
+        lastMessage: msg.content,
+        lastTime: timestamp,
+        unread: 0
+    }, false)
+
+    addConversationMessage({
+        accountId,
+        chatId: msg.chatId,
+        senderId: msg.senderId,
+        senderName: msg.senderName,
+        content: msg.content,
+        msgTime: msg.msgTime,
+        msgId: msg.msgId,
+        direction: 'out',
+        contentType: msg.contentType ?? 1,
+        extra: msg.extra
+    }, false)
 }
 
 /**
@@ -153,7 +201,9 @@ export function getConversationDetail(
         msgTime: m.msg_time,
         msgId: m.msg_id || undefined,
         timestamp: m.created_at,
-        direction: m.direction
+        direction: m.direction,
+        contentType: m.content_type ?? 1,
+        extra: m.extra ? safeParseExtra(m.extra) : undefined
     }))
 
     return {

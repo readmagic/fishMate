@@ -14,11 +14,13 @@ declare module 'simple-mind-map/src/plugins/Export.js'
 interface Window {
   api: {
     invoke: (channel: string, payload?: unknown) => Promise<unknown>
+    getPathForFile: (file: File) => string
     subscribe: (events: string[], params?: Record<string, unknown>) => void
     unsubscribe: (events: string[]) => void
     updateParams: (params: Record<string, unknown>) => void
     onPush: (cb: (payload: { event: string; data: unknown }) => void) => () => void
     onMaximizeChange: (cb: (maximized: boolean) => void) => () => void
     onNavigate: (cb: (route: string) => void) => () => void
+    onPlaySound: (cb: () => void) => () => void
   }
 }

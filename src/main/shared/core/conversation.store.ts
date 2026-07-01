@@ -6,6 +6,7 @@
 import {
     addIncomingMessage,
     addOutgoingMessage,
+    addRemoteOutgoingMessage,
     updateUserAvatar as updateAvatar,
     getAllConversations,
     getConversationDetail,
@@ -20,8 +21,19 @@ class ConversationStore {
         addIncomingMessage(accountId, msg)
     }
 
-    addOutgoing(accountId: string, chatId: string, toUserId: string, content: string) {
-        addOutgoingMessage(accountId, chatId, toUserId, content)
+    addOutgoing(
+        accountId: string,
+        chatId: string,
+        toUserId: string,
+        content: string,
+        opts?: { contentType?: number; extra?: Record<string, unknown> }
+    ) {
+        addOutgoingMessage(accountId, chatId, toUserId, content, opts)
+    }
+
+    // 自己在其它端发出的消息：作为发出记录，不增未读、不触发通知
+    addRemoteOutgoing(accountId: string, msg: ChatMessage) {
+        addRemoteOutgoingMessage(accountId, msg)
     }
 
     updateUserAvatar(accountId: string, chatId: string, avatar: string) {

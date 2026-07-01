@@ -32,7 +32,13 @@ export async function startBackend(): Promise<ClientManager> {
     clientManager = new ClientManager(async (accountId, msg) => {
         logger.info(`收到新消息: ${msg.senderName}: ${msg.content}`)
         messageStore.add(msg)
-        conversationStore.addIncoming(accountId, msg)
+
+        // 自己发的消息（senderId === 账号ID）：作为发出记录，不增未读、不触发通知
+        if (msg.senderId === accountId && !msg.isOrderMessage) {
+            conversationStore.addRemoteOutgoing(accountId, msg)
+        } else {
+            conversationStore.addIncoming(accountId, msg)
+        }
 
         if (msg.isOrderMessage && msg.orderId) {
             logger.info(`订单消息: orderId=${msg.orderId}`)
@@ -40,7 +46,10 @@ export async function startBackend(): Promise<ClientManager> {
             fetchOrderDetailAsync(accountId, msg.orderId)
         }
 
-        fetchUserAvatarAsync(accountId, msg.chatId, msg.senderId)
+        // 仅对方消息才拉取/更新会话用户头像；自己消息的 senderId===accountId 会把 user_avatar 误写成自己的
+        if (msg.senderId !== accountId) {
+            fetchUserAvatarAsync(accountId, msg.chatId, msg.senderId)
+        }
     })
 
     await clientManager.startAll()

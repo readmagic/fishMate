@@ -104,6 +104,9 @@ function createConversationTables() {
 
   safeAddColumn('conversation_messages', 'msg_id', 'TEXT')
   safeAddColumn('conversation_messages', 'account_id', "TEXT DEFAULT ''")
+  // 消息类型 1=文本 2=图片 3=宝贝卡片；extra=JSON(图片url+尺寸/卡片itemId+标题+图+价)
+  safeAddColumn('conversation_messages', 'content_type', 'INTEGER DEFAULT 1')
+  safeAddColumn('conversation_messages', 'extra', 'TEXT')
 
   // 创建索引
   db.exec(`CREATE INDEX IF NOT EXISTS idx_conv_msg_account_chat 

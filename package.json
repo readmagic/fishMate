@@ -19,6 +19,7 @@
     "ant-design-vue": "^4.2.6",
     "better-sqlite3": "^12.5.0",
     "dayjs": "^1.11.13",
+    "electron-screenshots": "^0.6.2",
     "openai": "^6.15.0",
     "pinia": "^3.0.0",
     "simple-mind-map": "^0.14.0-fix.2",

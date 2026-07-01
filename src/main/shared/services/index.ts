@@ -9,6 +9,7 @@ export { checkAutoReply, getMatchTypeName } from './autoreply.service.js'
 export {
     addIncomingMessage,
     addOutgoingMessage,
+    addRemoteOutgoingMessage,
     updateUserAvatar,
     getAllConversations,
     getConversationDetail,
@@ -55,3 +56,6 @@ export { processAutoSell, getRuleStockStatus } from './autosell.service.js'
 
 // 流程执行服务
 export { startWorkflowExecution, handleUserReply } from './workflow.service.js'
+
+// 媒体服务（图片上传 CDN）
+export { uploadImage } from './media.service.js'

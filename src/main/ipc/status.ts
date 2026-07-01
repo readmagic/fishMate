@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { messageStore } from '../shared/core/message.store.js'
+import { getTotalConversationMessageCount } from '../shared/db/index.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
 
 export function registerStatusIPC(cm: ClientManager) {
@@ -11,7 +11,7 @@ export function registerStatusIPC(cm: ClientManager) {
         return {
             clients: cm.getStatus(),
             activeCount: cm.getActiveCount(),
-            messageCount: messageStore.count()
+            messageCount: getTotalConversationMessageCount()
         }
     })
 }

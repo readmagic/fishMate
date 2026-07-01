@@ -66,8 +66,11 @@ export async function handleSyncMessage(msgData: any, ctx: MessageReceiverContex
         messages.push(chatMsg)
 
         // 订单状态消息不触发自动回复
+        const isSelf = chatMsg.senderId === myId // 自己在其它端发的消息
         if (chatMsg.isOrderMessage) {
             logger.debug(`[${accountId}] 订单状态消息，跳过自动回复检查`)
+        } else if (isSelf) {
+            logger.debug(`[${accountId}] 自己发的消息，跳过自动回复/工作流`)
         } else {
             // 先检查是否有等待中的工作流程需要继续执行
             if (ctx.client && chatMsg.chatId) {

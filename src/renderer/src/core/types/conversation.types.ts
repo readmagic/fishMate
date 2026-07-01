@@ -11,6 +11,8 @@ export interface ConversationMessage {
     msgId?: string;
     timestamp: number;
     direction: 'in' | 'out';
+    contentType: number;
+    extra?: Record<string, unknown>;
 }
 
 export interface Conversation {

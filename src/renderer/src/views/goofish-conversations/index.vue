@@ -1,12 +1,38 @@
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { ReloadOutlined, SendOutlined } from '@ant-design/icons-vue'
+import {
+  ReloadOutlined,
+  SendOutlined,
+  SmileOutlined,
+  PictureOutlined,
+  ScissorOutlined
+} from '@ant-design/icons-vue'
 import { conversationService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
 import { useGoodsStore } from '@/core/stores/useGoodsStore'
+import { STICKERS } from '@/core/data/stickers'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 import type { Conversation, ConversationMessage, GoodsItem } from '@/core/types'
+
+// 贴纸名 → url 映射，用于把消息文本里的 [表情名] 实时渲染成图
+const STICKER_MAP = new Map<string, string>(STICKERS.map((s) => [s.name, s.url]))
+
+// 把含 [表情名] 的文本渲染成 HTML：文本转义，命中的 token 替换为 <img>
+function renderContent(text: string | undefined): string {
+  if (!text) return ''
+  const escape = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return text
+    .split(/(\[[^\]]+\])/g)
+    .map((p) => {
+      if (/^\[[^\]]+\]$/.test(p) && STICKER_MAP.has(p)) {
+        return `<img src="${STICKER_MAP.get(p)}" class="inline-sticker" alt="${escape(p)}" title="${escape(p)}" />`
+      }
+      return escape(p)
+    })
+    .join('')
+}
 
 const pushStore = usePushStore()
 
@@ -23,8 +49,55 @@ const hasMoreMessages = ref(true)
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const draft = ref('')
+const inputRef = ref<HTMLElement | null>(null)
 const sending = ref(false)
 let wsSubscribed = false
+
+// contenteditable 输入框：读出文本时把 <img alt="[表情名]"> 还原回 token，保证表情不丢
+function readInputText(el: HTMLElement): string {
+  let s = ''
+  el.childNodes.forEach((n) => {
+    if (n.nodeType === Node.TEXT_NODE) {
+      s += n.textContent || ''
+    } else if (n.nodeType === Node.ELEMENT_NODE) {
+      const e = n as HTMLElement
+      s += e.tagName === 'IMG' ? (e.getAttribute('alt') || '') : (e.innerText || '')
+    }
+  })
+  return s
+}
+
+// 外部变更（选表情 / 清空 / 发送后）才重渲 innerHTML；用户键入时不重渲，避免光标跳到开头
+watch(draft, (v) => {
+  const el = inputRef.value
+  if (!el) return
+  if (readInputText(el) !== v) {
+    el.innerHTML = renderContent(v)
+    placeCursorEnd(el)
+  }
+})
+
+function placeCursorEnd(el: HTMLElement) {
+  const r = document.createRange()
+  r.selectNodeContents(el)
+  r.collapse(false)
+  const sel = window.getSelection()
+  sel?.removeAllRanges()
+  sel?.addRange(r)
+}
+
+function onInputChange() {
+  const el = inputRef.value
+  if (el) draft.value = readInputText(el)
+}
+
+// Enter 发送；IME 选词回车（isComposing / keyCode 229）不触发
+function onInputKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !e.shiftKey) {
+    e.preventDefault()
+    send()
+  }
+}
 
 // 会话绑定商品的匹配展示：按 selected.itemId 在本账号商品列表里查标题/主图
 const goodsStore = useGoodsStore()
@@ -222,7 +295,8 @@ async function send() {
         content: text,
         msgTime: ts,
         timestamp: Date.now(),
-        direction: 'out'
+        direction: 'out',
+        contentType: 1
       }
       conv.messages = [...(conv.messages || []), outMsg]
       conv.lastMessage = text
@@ -240,6 +314,90 @@ async function send() {
   }
 }
 
+// ============ 富消息发送 ============
+const stickerVisible = ref(false)
+const previewUrl = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const loadingAction = ref<'image' | 'screen' | null>(null)
+
+function nowTs() {
+  const n = new Date()
+  return `${n.getHours().toString().padStart(2, '0')}:${n.getMinutes().toString().padStart(2, '0')}:${n.getSeconds().toString().padStart(2, '0')}`
+}
+
+// 图片气泡展示尺寸：长边限 200px，贴纸限 96px，保持比例
+function imageStyle(extra: any) {
+  const max = extra?.sticker ? 96 : 200
+  const w = Number(extra?.width) || 0
+  const h = Number(extra?.height) || 0
+  if (!w || !h) return {}
+  if (w >= h) return { width: Math.min(max, w) + 'px', height: 'auto' }
+  return { height: Math.min(max, h) + 'px', width: 'auto' }
+}
+
+// 乐观追加一条富消息到当前会话
+function pushOutMsg(content: string, contentType: number, extra?: Record<string, unknown>) {
+  const conv = selected.value
+  if (!conv) return
+  const outMsg: ConversationMessage = {
+    id: Date.now(),
+    senderId: 'me',
+    senderName: '我',
+    content,
+    msgTime: nowTs(),
+    timestamp: Date.now(),
+    direction: 'out',
+    contentType,
+    extra
+  }
+  conv.messages = [...(conv.messages || []), outMsg]
+  conv.lastMessage = content
+  conv.lastTime = Date.now()
+  nextTick(() => scrollToBottom())
+}
+
+// 选表情：把 [表情名] 插入输入框，随文本一起发（ctype=1），收方 IM 实时渲染成图
+function onPickSticker(s: { name: string }) {
+  draft.value += s.name
+  stickerVisible.value = false
+}
+
+function triggerPickImage() {
+  fileInputRef.value?.click()
+}
+
+async function onPickImage(e: Event) {
+  const conv = selected.value
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!conv || !file) return
+  ;(e.target as HTMLInputElement).value = ''
+  loadingAction.value = 'image'
+  try {
+    const filePath = window.api.getPathForFile(file)
+    if (!filePath) { message.error('无法获取文件路径'); return }
+    const res = await conversationService.sendImage(conv.accountId, conv.chatId, conv.userId, filePath)
+    if (res.success) pushOutMsg('[图片]', 2)
+    else message.error(res.error || '发送失败')
+  } catch {
+    message.error('发送图片失败')
+  } finally {
+    loadingAction.value = null
+  }
+}
+
+async function onCaptureScreen() {
+  const conv = selected.value
+  if (!conv) return
+  loadingAction.value = 'screen'
+  try {
+    const res = await conversationService.captureScreen(conv.accountId, conv.chatId, conv.userId)
+    if (res.success) pushOutMsg('[截图]', 2)
+    else message.error(res.error || '截图失败')
+  } finally {
+    loadingAction.value = null
+  }
+}
+
 function formatTime(ts: number) {
   if (!ts) return ''
   const d = new Date(ts)
@@ -250,14 +408,68 @@ function formatTime(ts: number) {
   return d.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
 }
 
+// 消息流：按分钟插入居中时间分割条（独立于气泡）
+type MsgItem =
+  | { kind: 'time'; value: string; key: string }
+  | { kind: 'msg'; msg: ConversationMessage; key: string }
+const messageItems = computed<MsgItem[]>(() => {
+  const msgs = selected.value?.messages || []
+  const items: MsgItem[] = []
+  let last = ''
+  for (const m of msgs) {
+    const hm = m.timestamp
+      ? new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+      : (m.msgTime || '').slice(0, 5)
+    if (hm && hm !== last) {
+      items.push({ kind: 'time', value: hm, key: 't-' + m.id })
+      last = hm
+    }
+    items.push({ kind: 'msg', msg: m, key: 'm-' + m.id })
+  }
+  return items
+})
+
+// 头像：对方取会话 userAvatar，自己取账号 avatar；无图则回落首字
+function avatarSrc(msg: ConversationMessage): string | undefined {
+  const conv = selected.value
+  if (msg.direction === 'in') return conv?.userAvatar || undefined
+  const acc = pushStore.accounts.find((a) => a.id === conv?.accountId)
+  return acc?.avatar || undefined
+}
+function avatarText(msg: ConversationMessage): string {
+  const conv = selected.value
+  if (msg.direction === 'in') return conv?.userName?.charAt(0) || '?'
+  const acc = pushStore.accounts.find((a) => a.id === conv?.accountId)
+  return acc?.nickname?.charAt(0) || conv?.accountNickname?.charAt(0) || '我'
+}
+// 昵称：对方取消息 senderName，自己取账号昵称
+function nicknameOf(msg: ConversationMessage): string {
+  if (msg.direction === 'in') return msg.senderName || ''
+  const conv = selected.value
+  const acc = pushStore.accounts.find((a) => a.id === conv?.accountId)
+  return acc?.nickname || conv?.accountNickname || '我'
+}
+
 onMounted(() => {
   loadConversations()
   conversationService.setInChat(true)
+  // 初始化输入框内容（如有回填）
+  if (inputRef.value) inputRef.value.innerHTML = renderContent(draft.value)
 })
 onUnmounted(() => {
   // 不取消订阅：AppSidebar 全局常驻订阅供未读角标，此处仅重置本地 flag
   wsSubscribed = false
   conversationService.setInChat(false)
+  window.removeEventListener('keydown', onPreviewEsc)
+})
+
+// 图片预览期间监听 Esc 关闭；开/关随 previewUrl 绑定
+function onPreviewEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') previewUrl.value = ''
+}
+watch(previewUrl, (v) => {
+  if (v) window.addEventListener('keydown', onPreviewEsc)
+  else window.removeEventListener('keydown', onPreviewEsc)
 })
 </script>
 
@@ -346,38 +558,137 @@ onUnmounted(() => {
         </div>
 
         <div ref="messagesContainer" class="msg-list">
-          <div
-            v-for="msg in selected.messages"
-            :key="msg.id"
-            class="msg-row"
-            :class="msg.direction === 'in' ? 'msg-in' : 'msg-out'"
-          >
-            <div class="msg-header">
-              <span class="msg-sender">{{ msg.senderName }}</span>
-              <time class="msg-time">{{ msg.msgTime }}</time>
-              <span v-if="msg.msgId" class="msg-id">{{ msg.msgId.substring(0, 8) }}</span>
+          <template v-for="item in messageItems" :key="item.key">
+            <!-- 时间分割条：独立居中，不绑定气泡 -->
+            <div v-if="item.kind === 'time'" class="msg-time-divider">{{ item.value }}</div>
+            <!-- 消息行 -->
+            <div
+              v-else
+              class="msg-row"
+              :class="item.msg.direction === 'in' ? 'msg-in' : 'msg-out'"
+              :title="item.msg.msgId"
+            >
+              <!-- 对方头像（左）/ 我的头像（右，靠 row-reverse） -->
+              <a-avatar
+                v-if="avatarSrc(item.msg)"
+                class="msg-avatar"
+                :size="36"
+                :src="avatarSrc(item.msg)"
+              />
+              <a-avatar v-else class="msg-avatar" :size="36">{{ avatarText(item.msg) }}</a-avatar>
+
+              <div class="msg-main">
+                <!-- 昵称（双方都显示，位于头像旁/气泡上方） -->
+                <div class="msg-nickname">{{ nicknameOf(item.msg) }}</div>
+
+                <!-- 文本（含 [表情名] 实时渲染为贴纸） -->
+                <div
+                  v-if="!item.msg.contentType || item.msg.contentType === 1"
+                  class="msg-bubble"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                  v-html="renderContent(item.msg.content)"
+                ></div>
+                <!-- 图片/表情贴纸 -->
+                <div
+                  v-else-if="item.msg.contentType === 2"
+                  class="msg-bubble bubble-image-wrap"
+                  :class="item.msg.direction === 'out' ? 'bubble-out-img' : ''"
+                >
+                  <img
+                    v-if="(item.msg.extra as any)?.url"
+                    :src="(item.msg.extra as any).url"
+                    class="bubble-image"
+                    :style="imageStyle(item.msg.extra as any)"
+                    @click="previewUrl = (item.msg.extra as any).url"
+                  />
+                  <span v-else>{{ item.msg.content || '[图片]' }}</span>
+                </div>
+                <!-- 宝贝卡片 -->
+                <div
+                  v-else-if="item.msg.contentType === 3"
+                  class="msg-bubble bubble-card"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                >
+                  <img v-if="(item.msg.extra as any)?.picUrl" :src="(item.msg.extra as any).picUrl" class="card-pic" />
+                  <div v-else class="card-pic card-pic-empty" />
+                  <div class="card-meta">
+                    <div class="card-title">{{ (item.msg.extra as any)?.title || item.msg.content }}</div>
+                    <div class="card-price">¥{{ (item.msg.extra as any)?.price || '-' }}</div>
+                  </div>
+                </div>
+                <!-- 未知类型回退文本 -->
+                <div
+                  v-else
+                  class="msg-bubble"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                >{{ item.msg.content }}</div>
+
+                <!-- 已读状态（仅自己消息） -->
+                <div v-if="item.msg.direction === 'out'" class="msg-read">已读</div>
+              </div>
             </div>
-            <div class="msg-bubble" :class="msg.direction === 'out' ? 'bubble-out' : ''">{{ msg.content }}</div>
-          </div>
+          </template>
         </div>
 
-        <div class="msg-input-bar">
-          <a-input
-            v-model:value="draft"
-            placeholder="输入消息，回车发送"
-            :disabled="sending"
-            @press-enter="send"
-          />
-          <a-button type="primary" :loading="sending" @click="send">
-            <template #icon><SendOutlined /></template>
-          </a-button>
+        <div class="chat-input-bar">
+          <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="onPickImage" />
+          <div class="chat-input-card">
+            <div class="chat-input-toolbar">
+              <a-popover v-model:open="stickerVisible" trigger="click" placement="topLeft">
+                <template #content>
+                  <div class="sticker-grid">
+                    <img
+                      v-for="s in STICKERS"
+                      :key="s.name"
+                      :src="s.url"
+                      :alt="s.name"
+                      :title="s.name"
+                      class="sticker-item"
+                      @click="onPickSticker(s)"
+                    />
+                  </div>
+                </template>
+                <a-button class="ci-icon-btn" shape="circle" type="text" :disabled="!selected" title="表情">
+                  <template #icon><SmileOutlined /></template>
+                </a-button>
+              </a-popover>
+              <a-button class="ci-icon-btn" shape="circle" type="text" :loading="loadingAction === 'image'" :disabled="!selected" title="图片" @click="triggerPickImage">
+                <template #icon><PictureOutlined /></template>
+              </a-button>
+              <a-button class="ci-icon-btn" shape="circle" type="text" :loading="loadingAction === 'screen'" :disabled="!selected" title="截屏" @click="onCaptureScreen">
+                <template #icon><ScissorOutlined /></template>
+              </a-button>
+            </div>
+            <div
+              ref="inputRef"
+              class="chat-input-field"
+              :class="{ disabled: sending }"
+              contenteditable="true"
+              data-placeholder="请输入消息，按Enter键发送或点击发送按钮发送"
+              :contenteditable="!sending"
+              @input="onInputChange"
+              @keydown="onInputKeyDown"
+            ></div>
+          </div>
+          <button class="ci-send-btn" :disabled="sending || !selected" @click="send">
+            <span v-if="sending" class="ci-spin"></span>
+            <SendOutlined v-else />
+            <span>发送</span>
+          </button>
         </div>
+
       </div>
       <div v-else class="detail-empty">
         <a-empty description="选择一个对话查看消息" />
       </div>
     </template>
   </TwoPaneLayout>
+  <!-- 图片放大预览：点遮罩或 Esc 关闭 -->
+  <Teleport to="body">
+    <div v-if="previewUrl" class="img-preview-mask" @click="previewUrl = ''">
+      <img :src="previewUrl" class="img-preview-full" />
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -533,55 +844,298 @@ onUnmounted(() => {
 .msg-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 16px 16px 24px;
   min-height: 0;
+  background: #F7F7F7;
 }
+/* 时间分割条：独立居中 */
+.msg-time-divider {
+  align-self: center;
+  margin: 12px 0;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: #B0B0B0;
+  text-align: center;
+}
+/* 消息行 */
 .msg-row {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 .msg-in {
-  align-items: flex-start;
+  flex-direction: row;
 }
 .msg-out {
+  flex-direction: row-reverse;
+}
+.msg-avatar {
+  flex-shrink: 0;
+  background: #E6E8EB;
+  color: #8C8C8C;
+  font-size: 14px;
+}
+.msg-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 72%;
+}
+.msg-in .msg-main {
+  align-items: flex-start;
+}
+.msg-out .msg-main {
   align-items: flex-end;
 }
-.msg-header {
-  font-size: 11px;
-  color: var(--wm-text-secondary);
-  display: flex;
-  gap: 6px;
-  margin-bottom: 2px;
+.msg-nickname {
+  font-size: 12px;
+  color: #666;
+  margin: 0 4px 4px;
 }
-.msg-sender {
-  font-weight: 500;
-}
-.msg-id {
-  font-family: monospace;
-  opacity: 0.5;
-  font-size: 10px;
+/* 右侧自己昵称略下移，与气泡顶部留出呼吸 */
+.msg-out .msg-nickname {
+  margin-top: 3px;
 }
 .msg-bubble {
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--wm-bubble-in);
-  color: var(--wm-text);
-  max-width: 70%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.5;
   word-break: break-all;
+  color: #222;
+}
+.bubble-in {
+  background: #F1F1F1;
+  border-top-left-radius: 4px;
 }
 .bubble-out {
-  background: var(--wm-bubble-out);
-  color: #fff;
+  background: #FFD84D;
+  color: #222;
+  border-top-right-radius: 4px;
 }
-.msg-input-bar {
+.msg-read {
+  margin: 3px 4px 0;
+  font-size: 10px;
+  color: #C0C0C0;
+}
+/* 文本内联贴纸：v-html 注入的 <img> 无 scoped 属性，须用 :deep() 穿透 */
+:deep(.inline-sticker) {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin: 0 1px;
+  object-fit: contain;
+  display: inline-block;
+}
+/* 图片/贴纸气泡 */
+.bubble-image-wrap {
+  padding: 0;
+  background: transparent !important;
+}
+.bubble-image {
+  display: block;
+  border-radius: 8px;
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  cursor: pointer;
+}
+.bubble-out-img .bubble-image {
+  /* 发出的图片不强制背景 */
+}
+/* 图片放大预览 */
+.img-preview-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.img-preview-full {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 4px;
+}
+/* 宝贝卡片气泡：白底独立卡片，不沿用气泡黄/灰底 */
+.bubble-card {
   display: flex;
   gap: 8px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--wm-border);
+  padding: 8px;
+  max-width: 240px;
+  background: #fff;
+  border: 1px solid #ECECEC;
+  border-radius: 10px;
+}
+.card-pic {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  object-fit: cover;
   flex-shrink: 0;
-  background: var(--wm-card-bg);
+}
+.card-pic-empty {
+  background: var(--wm-content-bg, #ddd);
+}
+.card-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.card-title {
+  font-size: 13px;
+  color: var(--wm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.card-price {
+  font-size: 13px;
+  color: #f5222d;
+  font-weight: 600;
+}
+/* ===== 聊天输入面板 ===== */
+.chat-input-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 16px 14px;
+  flex-shrink: 0;
+  background: #F5F6F8;
+  border-top: 1px solid #E6E8EB;
+  font-family: 'Inter', 'PingFang SC', 'Helvetica Neue', Arial, sans-serif;
+}
+.chat-input-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 10px;
+  background: #FFFFFF;
+  border: 1px solid #E6E8EB;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.chat-input-card:focus-within {
+  border-color: #FFD666;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06), 0 0 0 3px rgba(255, 214, 102, 0.18);
+}
+.chat-input-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 圆形图标按钮 */
+.ci-icon-btn {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 30px !important;
+  color: #8C8C8C !important;
+  font-size: 16px;
+  transition: background 0.15s, color 0.15s;
+}
+.ci-icon-btn:hover:not(:disabled) {
+  background: #F0F0F0 !important;
+  color: #595959 !important;
+}
+.ci-icon-btn:disabled {
+  opacity: 0.5;
+}
+/* 多行输入域（contenteditable） */
+.chat-input-field {
+  flex: 1;
+  min-height: 28px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 2px 4px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #262626;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.chat-input-field.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.chat-input-field:empty::before {
+  content: attr(data-placeholder);
+  color: #BFBFBF;
+  pointer-events: none;
+}
+/* 发送按钮（暖黄胶囊） */
+.ci-send-btn {
+  align-self: flex-end;
+  height: 38px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 999px;
+  background: #FFD666;
+  color: #614700;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(255, 214, 102, 0.4);
+  transition: background 0.15s, transform 0.08s;
+}
+.ci-send-btn:hover:not(:disabled) {
+  background: #FFC53D;
+}
+.ci-send-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.ci-send-btn:disabled {
+  background: #FFF0B3;
+  color: #BFB98A;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.ci-spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(97, 71, 0, 0.3);
+  border-top-color: #614700;
+  border-radius: 50%;
+  animation: ci-spin 0.6s linear infinite;
+  display: inline-block;
+}
+@keyframes ci-spin {
+  to { transform: rotate(360deg); }
+}
+/* 表情面板 */
+.sticker-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 360px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.sticker-item {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.sticker-item:hover {
+  background: var(--wm-list-hover, rgba(0,0,0,0.05));
 }
 </style>

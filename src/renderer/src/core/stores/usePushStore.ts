@@ -38,6 +38,7 @@ export const usePushStore = defineStore('push', () => {
   const clients = ref<AccountsUpdate['clients']>([])
   const conversations = ref<Conversation[]>([])
   const conversationsTotal = ref(0)
+  const messageCount = ref(0)
 
   // 记录上一轮各账号在线状态，用于检测"刚上线/刚离线"过渡
   const prevConnected = new Set<string>()
@@ -81,6 +82,11 @@ export const usePushStore = defineStore('push', () => {
           conversationsTotal.value = d.total
           break
         }
+        case 'status': {
+          const d = data as { messageCount?: number }
+          if (typeof d.messageCount === 'number') messageCount.value = d.messageCount
+          break
+        }
       }
     })
   }
@@ -115,6 +121,16 @@ export const usePushStore = defineStore('push', () => {
     api.unsubscribe(['conversations'])
   }
 
+  function subscribeStatus() {
+    ensureListener()
+    if (!subscribed.has('status')) subscribed.add('status')
+    api.subscribe(['status'])
+  }
+  function unsubscribeStatus() {
+    subscribed.delete('status')
+    api.unsubscribe(['status'])
+  }
+
   return {
     orders,
     ordersTotal,
@@ -122,11 +138,14 @@ export const usePushStore = defineStore('push', () => {
     clients,
     conversations,
     conversationsTotal,
+    messageCount,
     subscribeOrders,
     unsubscribeOrders,
     subscribeAccounts,
     unsubscribeAccounts,
     subscribeConversations,
-    unsubscribeConversations
+    unsubscribeConversations,
+    subscribeStatus,
+    unsubscribeStatus
   }
 })

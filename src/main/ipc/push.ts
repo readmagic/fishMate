@@ -10,6 +10,7 @@ import { appEvents, Events } from '../shared/core/event-emitter.js'
 import { getOrders, getOrderCount } from '../shared/db/order.repository.js'
 import { getAllAccounts } from '../shared/db/account.repository.js'
 import { getAllConversations } from '../shared/services/conversation.service.js'
+import { getTotalConversationMessageCount } from '../shared/db/index.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
 
 const logger = createLogger('IPC:Push')
@@ -79,6 +80,10 @@ function sendInitialData(wcId: number, event: string, params: Params, cm: Client
                 data = { conversations, total }
                 break
             }
+            case 'status': {
+                data = { messageCount: getTotalConversationMessageCount() }
+                break
+            }
             default:
                 return
         }
@@ -107,13 +112,15 @@ export function registerPushIPC(cm: ClientManager) {
     appEvents.on(Events.ACCOUNTS_UPDATED, () =>
         broadcast('accounts', () => ({ accounts: getAllAccounts(), clients: cm.getStatus() }))
     )
-    appEvents.on(Events.CONVERSATIONS_UPDATED, () =>
+    appEvents.on(Events.CONVERSATIONS_UPDATED, () => {
         broadcast('conversations', (p) => {
             const limit = (p.limit as number) || 20
             const { conversations, total } = getAllConversations(limit, 0)
             return { conversations, total }
         })
-    )
+        // 同步推送消息总数，让主控制台「消息」统计随删除/新增即时更新
+        broadcast('status', () => ({ messageCount: getTotalConversationMessageCount() }))
+    })
 
     ipcMain.on('push:subscribe', (e, { events, params }: { events: string[]; params?: Params }) => {
         const wcId = e.sender.id

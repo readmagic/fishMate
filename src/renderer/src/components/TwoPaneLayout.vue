@@ -21,8 +21,10 @@ withDefaults(
 <style scoped>
 .wm-twopane {
   display: flex;
-  /* 减去页头高度与 .wm-content 的上下 padding(16*2)，精确填满可用区避免溢出滚动 */
-  height: calc(100vh - var(--wm-header-height) - 32px);
+  /* 精确填满 .wm-content 内容区：扣 titlebar、page-header、content 上下 padding(32*2)。
+     用显式 vh 高度保证子级 flex/百分比高度链可解析，避免内层滚动条失效或外层溢出 */
+  height: calc(100vh - var(--wm-titlebar-height) - var(--wm-header-height) - 64px);
+  min-height: 0;
   align-items: stretch;
 }
 .wm-twopane-list {

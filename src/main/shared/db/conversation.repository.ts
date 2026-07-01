@@ -111,14 +111,24 @@ export function getConversationMessageCount(accountId: string, chatId: string): 
     return (stmt.get(accountId, chatId) as { count: number }).count
 }
 
+// 获取全库对话消息总数（供主控制台统计）
+export function getTotalConversationMessageCount(): number {
+    const row = db.prepare('SELECT COUNT(*) as count FROM conversation_messages').get() as { count: number }
+    return row.count
+}
+
 // 添加消息
-export function addConversationMessage(msg: AddConversationMessageParams): number {
+export function addConversationMessage(msg: AddConversationMessageParams, emitNew = true): number {
     const stmt = db.prepare(`
-        INSERT INTO conversation_messages (account_id, chat_id, sender_id, sender_name, content, msg_time, msg_id, direction, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO conversation_messages (account_id, chat_id, sender_id, sender_name, content, msg_time, msg_id, direction, created_at, content_type, extra)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
-    const result = stmt.run(msg.accountId, msg.chatId, msg.senderId, msg.senderName, msg.content, msg.msgTime, msg.msgId || null, msg.direction, Date.now())
+    const result = stmt.run(
+        msg.accountId, msg.chatId, msg.senderId, msg.senderName, msg.content, msg.msgTime, msg.msgId || null,
+        msg.direction, Date.now(), msg.contentType ?? 1, msg.extra ? JSON.stringify(msg.extra) : null
+    )
     emitConversationsUpdated()
-    emitNewMessage()
+    // 自己发的消息（本端/远端）不触发 NEW_MESSAGE：不闪烁、不响铃
+    if (emitNew) emitNewMessage()
     return result.lastInsertRowid as number
 }

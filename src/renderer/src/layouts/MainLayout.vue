@@ -10,10 +10,23 @@ const title = computed(() => (route.meta.title as string) || '')
 
 // 主进程在托盘"跳转消息"场景下发送导航指令
 let offNav: (() => void) | undefined
+// 新消息提示音（与托盘闪烁同触发，主进程 message:playSound 事件）
+let offSound: (() => void) | undefined
+let audioEl: HTMLAudioElement | null = null
 onMounted(() => {
   offNav = window.api.onNavigate((r) => router.push(r))
+  audioEl = new Audio('/sounds/preview.mp3')
+  offSound = window.api.onPlaySound(() => {
+    if (!audioEl) return
+    audioEl.currentTime = 0
+    audioEl.play().catch(() => { /* 用户未与页面交互前可能被浏览器策略拦截，忽略 */ })
+  })
 })
-onUnmounted(() => offNav?.())
+onUnmounted(() => {
+  offNav?.()
+  offSound?.()
+  audioEl = null
+})
 </script>
 
 <template>

@@ -7,7 +7,6 @@ import { accountService } from '@/core/services'
 
 const pushStore = usePushStore()
 const loading = ref(false)
-const messageCount = ref(0)
 
 const activeCount = computed(() => pushStore.clients.filter((c) => c.connected).length)
 
@@ -20,7 +19,7 @@ async function loadData() {
     ])
     if (pushStore.accounts.length === 0) pushStore.accounts = accountsRes.accounts
     if (pushStore.clients.length === 0) pushStore.clients = statusRes.clients
-    messageCount.value = statusRes.messageCount
+    pushStore.messageCount = statusRes.messageCount
   } catch (e) {
     console.error('加载失败', e)
   } finally {
@@ -30,10 +29,12 @@ async function loadData() {
 
 onMounted(() => {
   pushStore.subscribeAccounts()
+  pushStore.subscribeStatus()
   loadData()
 })
 onUnmounted(() => {
   pushStore.unsubscribeAccounts()
+  pushStore.unsubscribeStatus()
 })
 </script>
 
@@ -47,7 +48,7 @@ onUnmounted(() => {
         <StatsCard title="在线" :value="activeCount" :icon="WifiOutlined" color="#52c41a" />
       </a-col>
       <a-col :xs="24" :sm="8">
-        <StatsCard title="消息" :value="messageCount" :icon="MessageOutlined" color="#722ed1" />
+        <StatsCard title="消息" :value="pushStore.messageCount" :icon="MessageOutlined" color="#722ed1" />
       </a-col>
     </a-row>
 

@@ -88,6 +88,8 @@ function startFlashing() {
     on = !on
     tray?.setImage(on ? emptyIcon : trayIcon)
   }, 500)
+  // 通知渲染层播放提示音（与闪烁同触发条件，已排除用户正盯聊天页的情况）
+  mainWindow?.webContents.send('message:playSound')
 }
 
 function stopFlashing() {

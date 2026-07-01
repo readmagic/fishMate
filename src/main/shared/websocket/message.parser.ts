@@ -208,11 +208,9 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
         // 检查是否是订单状态消息
         const isOrderMessage = isOrderStatusMessage(content)
 
-        // 过滤自己的消息（但订单状态消息除外，因为可能是系统发送的）
-        if (senderId === myId && !isOrderMessage) {
-            logger.debug(`[${msgTime}] 忽略自己发送的消息`)
-            return null
-        }
+        // 自己发出的消息（senderId === myId）不再丢弃：
+        // 闲鱼同会话不会回声本端发出的消息，这类消息来自用户在其它端（手机 App）的发送，
+        // 需要作为"发出"消息记录到对话，保证聊天记录完整。接收器/后端会按 senderId 区分处理。
 
         // 过滤纯系统消息（不包含有用信息的）
         if (isSystemMessage(content)) {

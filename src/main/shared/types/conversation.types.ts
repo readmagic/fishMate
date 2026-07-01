@@ -46,6 +46,8 @@ export interface DbConversationMessage {
     msg_id: string | null
     direction: MessageDirection
     created_at: number
+    content_type: number
+    extra: string | null
 }
 
 // 创建/更新对话参数
@@ -71,4 +73,6 @@ export interface AddConversationMessageParams {
     msgTime: string
     msgId?: string
     direction: MessageDirection
+    contentType?: number
+    extra?: Record<string, unknown>
 }

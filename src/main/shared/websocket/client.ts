@@ -7,7 +7,7 @@ import { generateDeviceId, generateMid, generateSign } from '../utils/crypto.js'
 import { nowLocalString } from '../utils/date.js'
 import { TokenManager } from './token.js'
 import { updateAccountStatus } from '../db/index.js'
-import { sendMessage } from './message.sender.js'
+import { sendMessage, sendImage as sendImageMsg } from './message.sender.js'
 import { processWebSocketMessage } from './message.receiver.js'
 import type { MessageCallback } from '../types/index.js'
 
@@ -66,6 +66,16 @@ export class GoofishClient {
             toUserId,
             text
         })
+    }
+
+    // 发送图片消息（ctype=2），url 须为闲鱼 CDN 图片地址
+    sendImage(chatId: string, toUserId: string, url: string, width: number, height: number): boolean {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false
+        return !!sendImageMsg(this.ws, this.myId, chatId, toUserId, url, width, height)
+    }
+
+    getWs(): WebSocket | null {
+        return this.ws
     }
 
     // 获取订单详情

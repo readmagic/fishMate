@@ -43,6 +43,7 @@ export {
     setConversationHidden,
     getConversationMessages,
     getConversationMessageCount,
+    getTotalConversationMessageCount,
     addConversationMessage
 } from './conversation.repository.js'
 

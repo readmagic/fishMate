@@ -20,6 +20,12 @@ export const conversationService = {
   sendMessage(accountId: string, chatId: string, toUserId: string, text: string) {
     return invoke<{ success: boolean; error?: string }>('message:send', { accountId, chatId, toUserId, text })
   },
+  sendImage(accountId: string, chatId: string, toUserId: string, filePath: string) {
+    return invoke<{ success: boolean; error?: string }>('message:sendImage', { accountId, chatId, toUserId, filePath })
+  },
+  captureScreen(accountId: string, chatId: string, toUserId: string) {
+    return invoke<{ success: boolean; error?: string }>('message:captureScreen', { accountId, chatId, toUserId })
+  },
   setInChat(inChat: boolean) {
     return invoke('message:setInChat', { inChat })
   }
