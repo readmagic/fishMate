@@ -15,7 +15,9 @@ let offSound: (() => void) | undefined
 let audioEl: HTMLAudioElement | null = null
 onMounted(() => {
   offNav = window.api.onNavigate((r) => router.push(r))
-  audioEl = new Audio('/sounds/preview.mp3')
+  // 相对路径：打包后经 file:// 加载，绝对路径 /sounds/... 会解析到文件系统根；
+  // 相对路径基于 index.html 所在目录解析，dev(http dev server) 与 prod(file://) 通用
+  audioEl = new Audio('sounds/preview.mp3')
   offSound = window.api.onPlaySound(() => {
     if (!audioEl) return
     audioEl.currentTime = 0

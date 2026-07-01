@@ -3,6 +3,8 @@ import { reactive, ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import { SettingOutlined, InfoCircleOutlined, CoffeeOutlined } from '@ant-design/icons-vue'
 import { settingsService, type AISettings } from '@/core/services'
+import alipayQr from '@/assets/about/alipay.png'
+import wechatQr from '@/assets/about/wechat.png'
 import pkg from '../../../../../package.json'
 
 // 程序版本号（取自 package.json）
@@ -153,11 +155,11 @@ onMounted(() => {
             <p class="coffee-desc">如果你觉得这款程序不错的话，欢迎请作者喝杯咖啡 ☕<br />你的支持是持续迭代的最大动力。</p>
             <div class="qr-row">
               <div class="qr-item">
-                <img src="/about/alipay.png" alt="支付宝" class="qr-img" />
+                <img :src="alipayQr" alt="支付宝" class="qr-img" />
                 <span class="qr-label">支付宝</span>
               </div>
               <div class="qr-item">
-                <img src="/about/wechat.png" alt="微信" class="qr-img" />
+                <img :src="wechatQr" alt="微信" class="qr-img" />
                 <span class="qr-label">微信</span>
               </div>
             </div>
