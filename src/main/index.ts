@@ -192,12 +192,11 @@ function createWindow() {
     return { action: 'deny' }
   })
 
-  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
-  }
+  // dev 与 prod 统一经 loadFile(file://) 加载渲染层，不再依赖 vite dev server(localhost:5173)
+  // 兜底——避免 dev(http origin) 掩盖打包后(file origin) 才暴露的路由/协议相对 URL 问题。
+  // 代价：失去 HMR，dev 改为先构建再启动（见 package.json dev 脚本）。
+  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+  if (isDev) mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.on('show', stopFlashing)
   mainWindow.on('focus', stopFlashing)

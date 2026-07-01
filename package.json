@@ -7,7 +7,7 @@
   "author": "Frandy",
   "license": "ISC",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite build && electron .",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "dist": "electron-vite build && electron-builder",

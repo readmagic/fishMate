@@ -1,5 +1,9 @@
 appId: com.frandy.fishMate
 productName: fishMate
+# 显式指定图标：Linux 目标只在 build/icons/ 目录或显式 icon 字段下拾取图标，
+# 单独的 build/icon.png 不会被 deb/AppImage 识别（mac/win 解析逻辑不同可拾取）。
+# 顶层 icon 同时覆盖三端，避免 Linux deb 装后无桌面图标。
+icon: build/icon.png
 copyright: Copyright © Frandy
 directories:
   output: release

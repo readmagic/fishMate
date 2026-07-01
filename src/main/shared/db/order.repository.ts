@@ -5,6 +5,7 @@
 import { db } from './connection.js'
 import { nowLocalString } from '../utils/date.js'
 import { emitOrdersUpdated } from '../core/event-emitter.js'
+import { normalizeImageUrl } from '../core/url.js'
 import type { OrderRecord, OrderListParams } from '../types/order.types.js'
 
 // 获取订单列表
@@ -150,7 +151,7 @@ function mapRowToOrder(row: any): OrderRecord {
         accountId: row.account_id,
         itemId: row.item_id,
         itemTitle: row.item_title,
-        itemPicUrl: row.item_pic_url,
+        itemPicUrl: normalizeImageUrl(row.item_pic_url),
         price: row.price,
         buyerUserId: row.buyer_user_id,
         buyerNickname: row.buyer_nickname,

@@ -7,6 +7,7 @@ import { CookiesManager } from '../core/cookies.manager.js'
 import { generateSign } from '../utils/crypto.js'
 import { createLogger } from '../core/logger.js'
 import { getUserAvatar, saveUserAvatar, hasUserAvatar } from '../db/index.js'
+import { normalizeImageUrl } from '../core/url.js'
 import type { UserHeadInfo, AccountUserInfo } from '../types/index.js'
 
 const logger = createLogger('Svc:User')
@@ -20,7 +21,7 @@ export function getCachedUserHead(userId: string): UserHeadInfo | null {
         return {
             userId: cached.user_id,
             displayName: cached.display_name || '',
-            avatar: cached.avatar,
+            avatar: normalizeImageUrl(cached.avatar),
             ipLocation: cached.ip_location || undefined,
             introduction: cached.introduction || undefined
         }
@@ -97,7 +98,7 @@ export async function fetchUserHead(
 
         if (json?.ret?.some((r: string) => r.includes('SUCCESS')) && json?.data?.module?.base) {
             const base = json.data.module.base
-            const avatar = base.avatar?.avatar || ''
+            const avatar = normalizeImageUrl(base.avatar?.avatar || '')
             logger.info(`获取用户 ${userId} 头像成功: ${avatar.substring(0, 50)}...`)
 
             const userHead: UserHeadInfo = {
@@ -241,7 +242,7 @@ export async function fetchUserProfile(
                 logger.info(`[${accountId}] 获取用户信息成功: ${base.displayName}`)
                 return {
                     displayName: base.displayName || '',
-                    avatar: base.avatar || '',
+                    avatar: normalizeImageUrl(base.avatar || ''),
                     soldCount: base.soldCount,
                     followers: base.followers,
                     following: base.following

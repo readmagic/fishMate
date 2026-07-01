@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 export const routes: RouteRecordRaw[] = [
@@ -64,8 +64,10 @@ export const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/404' }
 ]
 
+// hash 路由：打包后经 loadFile(file://) 加载，history 模式会把文件路径当路由解析
+// 命中通配规则重定向到 /404；hash 模式 (#/dashboard) 不依赖服务端, dev/prod 通用
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 })
 

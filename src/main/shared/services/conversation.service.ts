@@ -18,6 +18,7 @@ import {
     getConversationCount,
     getAccount
 } from '../db/index.js'
+import { normalizeImageUrl } from '../core/url.js'
 import type {
     ChatMessage,
     Conversation,
@@ -28,7 +29,12 @@ import type {
 function safeParseExtra(raw: string): Record<string, unknown> | undefined {
     try {
         const v = JSON.parse(raw)
-        return typeof v === 'object' && v ? v as Record<string, unknown> : undefined
+        if (typeof v !== 'object' || !v) return undefined
+        const o = v as Record<string, unknown>
+        // extra 内的图片 URL 同样规范化（图片消息 url / 卡片 picUrl）
+        if (typeof o.url === 'string') o.url = normalizeImageUrl(o.url as string)
+        if (typeof o.picUrl === 'string') o.picUrl = normalizeImageUrl(o.picUrl as string)
+        return o
     } catch {
         return undefined
     }
@@ -171,7 +177,7 @@ export function getAllConversations(
             chatId: c.chat_id,
             userId: c.user_id,
             userName: c.user_name,
-            userAvatar: c.user_avatar || undefined,
+            userAvatar: normalizeImageUrl(c.user_avatar || undefined),
             lastMessage: c.last_message,
             lastTime: c.last_time,
             unread: c.unread,
@@ -217,7 +223,7 @@ export function getConversationDetail(
         chatId: conv.chat_id,
         userId: conv.user_id,
         userName: conv.user_name,
-        userAvatar: conv.user_avatar || undefined,
+        userAvatar: normalizeImageUrl(conv.user_avatar || undefined),
         lastMessage: conv.last_message,
         lastTime: conv.last_time,
         unread: conv.unread,

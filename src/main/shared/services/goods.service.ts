@@ -6,6 +6,7 @@ import { API_ENDPOINTS, WS_CONFIG } from '../core/constants.js'
 import { CookiesManager } from '../core/cookies.manager.js'
 import { generateSign } from '../utils/crypto.js'
 import { createLogger } from '../core/logger.js'
+import { normalizeImageUrl } from '../core/url.js'
 import type { GoodsItem, GoodsListResult } from '../types/index.js'
 
 const logger = createLogger('Svc:Goods')
@@ -75,7 +76,7 @@ export async function fetchGoodsList(
                     id: cardData.id || detailParams.itemId || '',
                     title: cardData.title || detailParams.title || '',
                     price: priceInfo.price || detailParams.soldPrice || '',
-                    picUrl: picInfo.picUrl || detailParams.picUrl || '',
+                    picUrl: normalizeImageUrl(picInfo.picUrl || detailParams.picUrl || ''),
                     picWidth: picInfo.width || parseInt(detailParams.picWidth) || 0,
                     picHeight: picInfo.height || parseInt(detailParams.picHeight) || 0,
                     categoryId: cardData.categoryId || 0,

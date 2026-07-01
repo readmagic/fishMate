@@ -6,6 +6,7 @@ import { db } from './connection.js'
 import { createLogger } from '../core/logger.js'
 import { nowLocalString } from '../utils/date.js'
 import { emitAccountsUpdated } from '../core/event-emitter.js'
+import { normalizeImageUrl } from '../core/url.js'
 import type {
     Account,
     AccountStatus,
@@ -15,14 +16,20 @@ import type {
 
 const logger = createLogger('Db:Account')
 
+// 头像 URL 统一转 https（避免打包后 file:// 解析协议相对 URL 失败）
+function mapAccount(a: Account): Account {
+    if (a?.avatar) a.avatar = normalizeImageUrl(a.avatar)
+    return a
+}
+
 // 获取所有启用的账号
 export function getEnabledAccounts(): Account[] {
     const stmt = db.prepare(`
-        SELECT id, cookies, user_id as userId, nickname, avatar, enabled, remark, 
+        SELECT id, cookies, user_id as userId, nickname, avatar, enabled, remark,
                created_at as createdAt, updated_at as updatedAt
         FROM accounts WHERE enabled = 1
     `)
-    return stmt.all() as Account[]
+    return (stmt.all() as Account[]).map(mapAccount)
 }
 
 // 获取所有账号
@@ -32,7 +39,7 @@ export function getAllAccounts(): Account[] {
                created_at as createdAt, updated_at as updatedAt
         FROM accounts
     `)
-    return stmt.all() as Account[]
+    return (stmt.all() as Account[]).map(mapAccount)
 }
 
 // 获取单个账号
@@ -42,7 +49,8 @@ export function getAccount(id: string): Account | null {
                created_at as createdAt, updated_at as updatedAt
         FROM accounts WHERE id = ?
     `)
-    return stmt.get(id) as Account | null
+    const row = stmt.get(id) as Account | null
+    return row ? mapAccount(row) : null
 }
 
 // 添加或更新账号
