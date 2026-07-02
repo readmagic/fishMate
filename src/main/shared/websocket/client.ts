@@ -297,28 +297,43 @@ export class GoofishClient {
         this.tokenRefreshTimer = setInterval(async () => {
             if (this.running) {
                 logger.info(`[${this._accountId}] 开始定时刷新Token...`)
-                const token = await this.tokenManager.refresh()
+                const { token, expired } = await this.tokenManager.refresh()
                 if (token) {
                     logger.info(`[${this._accountId}] Token刷新成功`)
                     updateAccountStatus({ accountId: this._accountId, lastTokenRefresh: nowLocalString() })
+                    return
+                }
+                // 登录态过期：断开连接并标记，避免 WS 仍开着却"假在线"
+                if (expired) {
+                    logger.error(`[${this._accountId}] 登录态已过期，断开连接，需重新登录`)
+                    updateAccountStatus({
+                        accountId: this._accountId,
+                        connected: false,
+                        errorMessage: '登录已过期，请重新登录'
+                    })
+                    this.disconnect()
                 } else {
-                    logger.warn(`[${this._accountId}] Token刷新失败`)
+                    logger.warn(`[${this._accountId}] Token刷新失败（瞬时）`)
                 }
             }
         }, WS_CONFIG.TOKEN_REFRESH_INTERVAL * 1000)
         logger.info(`[${this._accountId}] Token刷新定时器已启动，间隔: ${WS_CONFIG.TOKEN_REFRESH_INTERVAL}秒`)
     }
 
-    private async initConnection() {
-        if (!this.ws) return
+    // 返回 { success, expired, error }：区分登录态过期与其它失败，供上层引导重新登录
+    private async initConnection(): Promise<{ success: boolean; expired: boolean; error?: string }> {
+        if (!this.ws) return { success: false, expired: false, error: 'WebSocket 未就绪' }
 
         let token = this.tokenManager.getToken()
         if (!token) {
             logger.info(`[${this._accountId}] 首次连接，正在获取Token...`)
-            token = await this.tokenManager.refresh()
+            const r = await this.tokenManager.refresh()
+            token = r.token
             if (!token) {
-                logger.error(`[${this._accountId}] 获取Token失败，无法完成注册`)
-                return
+                const error = r.expired ? '登录已过期，请重新登录' : '获取Token失败'
+                logger.error(`[${this._accountId}] ${error}，无法完成注册`)
+                updateAccountStatus({ accountId: this._accountId, connected: false, errorMessage: error })
+                return { success: false, expired: r.expired, error }
             }
         }
 
@@ -349,6 +364,7 @@ export class GoofishClient {
         }
         this.ws.send(JSON.stringify(syncMsg))
         logger.info(`[${this._accountId}] 连接注册完成`)
+        return { success: true, expired: false }
     }
 
     private sendAck(headers: any) {
@@ -360,7 +376,7 @@ export class GoofishClient {
         this.ws.send(JSON.stringify(ack))
     }
 
-    async connect(): Promise<boolean> {
+    async connect(): Promise<{ success: boolean; expired: boolean; error?: string }> {
         return new Promise((resolve) => {
             try {
                 logger.info(`[${this._accountId}] 正在连接 WebSocket...`)
@@ -372,13 +388,21 @@ export class GoofishClient {
                     updateAccountStatus({ accountId: this._accountId, connected: true, errorMessage: '' })
 
                     try {
-                        await this.initConnection()
+                        const r = await this.initConnection()
+                        if (!r.success) {
+                            // 注册失败（多为登录态过期）：关掉空壳 WS，避免"假在线"
+                            this.cleanup()
+                            try { this.ws?.close() } catch { /* ignore */ }
+                            this.running = false
+                            resolve(r)
+                            return
+                        }
                         this.startHeartbeat()
                         this.startTokenRefresh()
-                        resolve(true)
-                    } catch (e) {
+                        resolve({ success: true, expired: false })
+                    } catch (e: any) {
                         logger.error(`[${this._accountId}] 初始化连接失败: ${e}`)
-                        resolve(false)
+                        resolve({ success: false, expired: false, error: e?.message || '初始化失败' })
                     }
                 })
 
@@ -416,11 +440,11 @@ export class GoofishClient {
                 this.ws.on('error', (err) => {
                     logger.error(`[${this._accountId}] WebSocket 错误: ${err.message}`)
                     updateAccountStatus({ accountId: this._accountId, errorMessage: err.message })
-                    resolve(false)
+                    resolve({ success: false, expired: false, error: err.message })
                 })
-            } catch (e) {
+            } catch (e: any) {
                 logger.error(`[${this._accountId}] 连接失败: ${e}`)
-                resolve(false)
+                resolve({ success: false, expired: false, error: e?.message || '连接失败' })
             }
         })
     }
@@ -447,13 +471,13 @@ export class GoofishClient {
         logger.info(`[${this._accountId}] 客户端已断开连接`)
     }
 
-    async run() {
+    async run(): Promise<{ success: boolean; expired: boolean; error?: string }> {
         this.running = true
-        const connected = await this.connect()
-        if (!connected) {
-            logger.error(`[${this._accountId}] 启动失败`)
+        const r = await this.connect()
+        if (!r.success) {
+            logger.error(`[${this._accountId}] 启动失败${r.expired ? '（登录态过期）' : ''}: ${r.error || ''}`)
             this.running = false
         }
-        return connected
+        return r
     }
 }

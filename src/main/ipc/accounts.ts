@@ -106,18 +106,22 @@ export function registerAccountIPC(cm: ClientManager) {
     })
 
     ipcMain.handle('account:setEnabled', async (_e, { id, enabled }) => {
-        const success = updateAccountEnabled(id, enabled)
-        if (enabled) await cm.startClient(id)
-        else cm.stopClient(id)
+        if (enabled) {
+            const r = await cm.startClient(id)
+            if (r.success) updateAccountEnabled(id, true)
+            return { success: r.success, expired: r.expired, error: r.error }
+        }
+        const success = cm.stopClient(id)
+        if (success) updateAccountEnabled(id, false)
         return { success }
     })
 
     ipcMain.handle('account:start', async (_e, { id }) => {
         const account = getAccount(id)
-        if (!account) return { success: false, error: 'Account not found' }
-        const success = await cm.startClient(id)
-        if (success) updateAccountEnabled(id, true)
-        return { success }
+        if (!account) return { success: false, expired: false, error: 'Account not found' }
+        const r = await cm.startClient(id)
+        if (r.success) updateAccountEnabled(id, true)
+        return { success: r.success, expired: r.expired, error: r.error }
     })
 
     ipcMain.handle('account:stop', async (_e, { id }) => {
@@ -127,8 +131,8 @@ export function registerAccountIPC(cm: ClientManager) {
     })
 
     ipcMain.handle('account:restart', async (_e, { id }) => {
-        const success = await cm.restartClient(id)
-        return { success }
+        const r = await cm.restartClient(id)
+        return { success: r.success, expired: r.expired, error: r.error }
     })
 
     // 扫码登录：弹出独立窗口显示闲鱼登录二维码，扫码成功后自动入库

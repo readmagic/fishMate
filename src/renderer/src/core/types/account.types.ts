@@ -2,6 +2,14 @@
  * 账号相关类型定义
  */
 
+export interface AccountStatus {
+    accountId: string;
+    connected: boolean;
+    lastHeartbeat?: string;
+    lastTokenRefresh?: string;
+    errorMessage?: string;
+}
+
 export interface Account {
     id: string;
     cookies: string;
@@ -12,6 +20,7 @@ export interface Account {
     remark?: string;
     createdAt?: string;
     updatedAt?: string;
+    status?: AccountStatus;
 }
 
 export interface ClientStatus {

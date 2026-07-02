@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onBeforeUnmount, nextTick } from 'vue'
-import { Modal, message } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
   PlusOutlined,
   ArrowLeftOutlined,
@@ -29,6 +29,7 @@ import {
 } from './workflow-converter'
 
 const workflows = ref<Workflow[]>([])
+const { modal } = App.useApp()
 const loading = ref(false)
 const saving = ref(false)
 const editingWorkflow = ref<Workflow | null>(null)
@@ -425,7 +426,7 @@ function deleteWorkflow(w: Workflow) {
     message.warning('默认流程不能删除')
     return
   }
-  Modal.confirm({
+  modal.confirm({
     title: '确认删除',
     content: `确定要删除流程 "${w.name}" 吗？`,
     okType: 'danger',

@@ -8,7 +8,7 @@ import { ipcMain, BrowserWindow } from 'electron'
 import { createLogger } from '../shared/core/logger.js'
 import { appEvents, Events } from '../shared/core/event-emitter.js'
 import { getOrders, getOrderCount } from '../shared/db/order.repository.js'
-import { getAllAccounts } from '../shared/db/account.repository.js'
+import { getAllAccounts, getAccountStatus } from '../shared/db/account.repository.js'
 import { getAllConversations } from '../shared/services/conversation.service.js'
 import { getTotalConversationMessageCount } from '../shared/db/index.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
@@ -71,7 +71,7 @@ function sendInitialData(wcId: number, event: string, params: Params, cm: Client
                 break
             }
             case 'accounts': {
-                data = { accounts: getAllAccounts(), clients: cm.getStatus() }
+                data = buildAccountsPayload(cm)
                 break
             }
             case 'conversations': {
@@ -93,8 +93,15 @@ function sendInitialData(wcId: number, event: string, params: Params, cm: Client
     }
 }
 
+// 账号列表推送数据：Account + 当前状态（含 errorMessage，供渲染端展示"为何离线"）
+function buildAccountsPayload(cm: ClientManager) {
+    return {
+        accounts: getAllAccounts().map((a) => ({ ...a, status: getAccountStatus(a.id) })),
+        clients: cm.getStatus()
+    }
+}
+
 export function registerPushIPC(cm: ClientManager) {
-    // 事件监听（只注册一次）
     appEvents.on(Events.ORDERS_UPDATED, () =>
         broadcast('orders', (p) => ({
             orders: getOrders({
@@ -110,7 +117,7 @@ export function registerPushIPC(cm: ClientManager) {
         }))
     )
     appEvents.on(Events.ACCOUNTS_UPDATED, () =>
-        broadcast('accounts', () => ({ accounts: getAllAccounts(), clients: cm.getStatus() }))
+        broadcast('accounts', () => buildAccountsPayload(cm))
     )
     appEvents.on(Events.CONVERSATIONS_UPDATED, () => {
         broadcast('conversations', (p) => {

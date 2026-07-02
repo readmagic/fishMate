@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Modal, message } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
-  PlusOutlined,
   SaveOutlined,
   EditOutlined,
   PlayCircleOutlined,
@@ -18,17 +17,18 @@ import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 import type { Account } from '@/core/types'
 
 const pushStore = usePushStore()
+const { modal } = App.useApp()
 const loading = ref(false)
 const submitting = ref(false)
 const qrLoading = ref(false)
 const refreshingId = ref<string | null>(null)
+const startingId = ref<string | null>(null)
 const editingId = ref<string | null>(null)
-const isAdding = ref(false)
-const form = ref<{ cookies: string; remark: string }>({ cookies: '', remark: '' })
+const form = ref<{ remark: string }>({ remark: '' })
 
 const accounts = computed(() => pushStore.accounts)
 const selectedAccount = computed(() => accounts.value.find((a) => a.id === editingId.value) || null)
-const hasSelection = computed(() => editingId.value !== null || isAdding.value)
+const hasSelection = computed(() => editingId.value !== null)
 
 function isConnected(id: string) {
   return pushStore.clients.some((c) => c.accountId === id && c.connected)
@@ -54,15 +54,13 @@ async function loadData() {
 }
 
 function selectAccount(account: Account) {
-  isAdding.value = false
   editingId.value = account.id
-  form.value = { cookies: '', remark: account.remark || '' }
+  form.value = { remark: account.remark || '' }
 }
 
-function startAdd() {
-  editingId.value = null
-  isAdding.value = true
-  form.value = { cookies: '', remark: '' }
+// 添加账号：直接弹出扫码登录窗口，扫码成功后自动入库
+function onAdd() {
+  onLoginQr()
 }
 
 async function onLoginQr() {
@@ -71,9 +69,8 @@ async function onLoginQr() {
     const res = await accountService.loginQr()
     if (res.success) {
       message.success('扫码登录成功')
-      isAdding.value = false
       editingId.value = null
-      form.value = { cookies: '', remark: '' }
+      form.value = { remark: '' }
       await loadData()
     } else if (res.error && res.error !== '已取消') {
       message.error(res.error)
@@ -87,30 +84,20 @@ async function onLoginQr() {
 
 function cancelEdit() {
   editingId.value = null
-  isAdding.value = false
-  form.value = { cookies: '', remark: '' }
+  form.value = { remark: '' }
 }
 
 async function handleSubmit() {
-  if (!editingId.value && !form.value.cookies.trim()) {
-    message.warning('请填写 Cookies')
-    return
-  }
+  if (!editingId.value) return
   submitting.value = true
   try {
     const res = await accountService.addAccount({
-      id: editingId.value || undefined,
-      cookies: form.value.cookies.trim() || undefined,
+      id: editingId.value,
       remark: form.value.remark.trim() || undefined
     })
     if (res.success) {
-      message.success(editingId.value ? '保存成功' : '添加成功')
-      const savedId = editingId.value
-      form.value = { cookies: '', remark: '' }
-      isAdding.value = false
-      editingId.value = null
+      message.success('保存成功')
       await loadData()
-      if (savedId) editingId.value = savedId
     } else {
       message.error(res.error || '操作失败')
     }
@@ -132,15 +119,49 @@ async function onRefreshInfo(id: string) {
   }
 }
 async function onStart(id: string) {
-  await accountService.startAccount(id)
-  await loadData()
+  startingId.value = id
+  try {
+    const res = await accountService.startAccount(id)
+    if (res.success) {
+      await loadData()
+      return
+    }
+    // 登录态过期：引导用户重新扫码登录，成功后自动上线
+    if (res.expired) {
+      modal.confirm({
+        title: '账号登录已过期',
+        content: '该账号的登录凭证已失效，需要重新扫码登录以获取新凭证。是否现在重新登录？',
+        okText: '重新登录',
+        cancelText: '稍后',
+        onOk: async () => {
+          const qr = await accountService.loginQr()
+          if (qr.success) {
+            message.success('重新登录成功，正在上线')
+            await loadData()
+            const r = await accountService.startAccount(id)
+            if (!r.success) {
+              message.error(r.error || '上线失败')
+            }
+            await loadData()
+          } else if (qr.error && qr.error !== '已取消') {
+            message.error(qr.error)
+          }
+        }
+      })
+    } else {
+      message.error(res.error || '上线失败')
+    }
+    await loadData()
+  } finally {
+    startingId.value = null
+  }
 }
 async function onStop(id: string) {
   await accountService.stopAccount(id)
   await loadData()
 }
 function onDelete(id: string) {
-  Modal.confirm({
+  modal.confirm({
     title: '删除账号',
     content: `确定删除账号 ${id}？`,
     okType: 'danger',
@@ -166,8 +187,8 @@ onUnmounted(() => {
     <template #list>
       <div class="list-header">
         <span class="list-title">账号列表</span>
-        <a-button size="small" type="primary" @click="startAdd">
-          <template #icon><PlusOutlined /></template>
+        <a-button size="small" type="primary" :loading="qrLoading" @click="onAdd">
+          <template #icon><QrcodeOutlined /></template>
           添加
         </a-button>
       </div>
@@ -187,9 +208,12 @@ onUnmounted(() => {
               <div class="acc-meta">
                 <div class="acc-name">{{ item.nickname || '未知用户' }}</div>
                 <div class="acc-sub">{{ item.remark || item.id }}</div>
+                <div v-if="!isConnected(item.id) && item.status?.errorMessage" class="acc-err">
+                  {{ item.status.errorMessage }}
+                </div>
               </div>
               <a-tag color="green" v-if="isConnected(item.id)" class="acc-tag">在线</a-tag>
-              <a-tag v-else class="acc-tag">离线</a-tag>
+              <a-tag v-else :color="item.status?.errorMessage ? 'red' : undefined" class="acc-tag">离线</a-tag>
             </div>
           </div>
         </a-spin>
@@ -199,45 +223,34 @@ onUnmounted(() => {
     <template #detail>
       <div v-if="hasSelection" class="detail-wrap">
         <div class="detail-header">
-          <component :is="editingId ? EditOutlined : PlusOutlined" />
-          <span>{{ editingId ? '编辑账号' : '添加账号' }}</span>
+          <EditOutlined />
+          <span>编辑账号</span>
         </div>
         <div class="detail-body">
           <a-form layout="vertical" @submit.prevent="handleSubmit">
-            <a-form-item v-if="editingId" label="账号 ID">
+            <a-form-item label="账号 ID">
               <a-input :value="editingId" disabled />
-            </a-form-item>
-            <a-form-item label="Cookies" required>
-              <a-textarea
-                v-model:value="form.cookies"
-                :rows="4"
-                :placeholder="editingId ? '留空保持原有 Cookies，填写则更新' : '粘贴 Cookie 字符串，系统将自动获取用户信息'"
-              />
             </a-form-item>
             <a-form-item label="备注">
               <a-input v-model:value="form.remark" placeholder="可选，方便识别" />
             </a-form-item>
             <a-space>
               <a-button type="primary" html-type="submit" :loading="submitting">
-                <template #icon><component :is="editingId ? SaveOutlined : PlusOutlined" /></template>
-                {{ editingId ? '保存' : '添加' }}
-              </a-button>
-              <a-button v-if="!editingId" :loading="qrLoading" @click="onLoginQr">
-                <template #icon><QrcodeOutlined /></template>
-                扫码登录
+                <template #icon><SaveOutlined /></template>
+                保存
               </a-button>
               <a-button @click="cancelEdit">取消</a-button>
             </a-space>
           </a-form>
 
-          <div v-if="editingId" class="detail-actions">
+          <div class="detail-actions">
             <a-divider>账号操作</a-divider>
             <a-space wrap>
               <a-button :loading="refreshingId === editingId" @click="onRefreshInfo(editingId)">
                 <template #icon><ReloadOutlined /></template>
                 刷新信息
               </a-button>
-              <a-button v-if="!isConnected(editingId)" type="primary" @click="onStart(editingId)">
+              <a-button v-if="!isConnected(editingId)" type="primary" :loading="startingId === editingId" @click="onStart(editingId)">
                 <template #icon><PlayCircleOutlined /></template>
                 在线
               </a-button>
@@ -252,21 +265,10 @@ onUnmounted(() => {
             </a-space>
             <p v-if="selectedAccount" class="acc-update">更新时间：{{ formatTime(selectedAccount.updatedAt) }}</p>
           </div>
-
-          <a-card size="small" :bordered="false" class="help-card">
-            <p class="help-title">如何获取 Cookies？</p>
-            <ol class="help-list">
-              <li>登录闲鱼网页版 (goofish.com)</li>
-              <li>按 F12 打开开发者工具</li>
-              <li>切换到 Network 标签</li>
-              <li>刷新页面，点击任意请求</li>
-              <li>在 Headers 中找到 Cookie</li>
-            </ol>
-          </a-card>
         </div>
       </div>
       <div v-else class="detail-empty">
-        <a-empty description="选择一个账号查看详情，或点击添加" />
+        <a-empty description="选择一个账号查看详情，或点击添加扫码登录" />
       </div>
     </template>
   </TwoPaneLayout>
@@ -329,6 +331,14 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   font-family: monospace;
 }
+.acc-err {
+  font-size: 12px;
+  color: #f5222d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
 .acc-tag {
   margin: 0;
   flex-shrink: 0;
@@ -363,21 +373,6 @@ onUnmounted(() => {
   margin: 12px 0 0;
   font-size: 12px;
   color: var(--wm-text-secondary);
-}
-.help-card {
-  margin-top: 24px;
-  background: transparent;
-}
-.help-title {
-  font-weight: 600;
-  margin: 0 0 8px;
-  color: var(--wm-text);
-}
-.help-list {
-  padding-left: 20px;
-  font-size: 12px;
-  color: var(--wm-text-secondary);
-  line-height: 1.8;
 }
 .detail-empty {
   display: flex;

@@ -24,29 +24,33 @@ export class ClientManager {
     }
 
     // 启动单个客户端
-    async startClient(accountId: string): Promise<boolean> {
+    async startClient(accountId: string): Promise<{ success: boolean; expired: boolean; error?: string }> {
         if (this.clients.has(accountId)) {
             logger.warn(`账号 ${accountId} 已在运行中`)
-            return false
+            return { success: false, expired: false, error: '已在运行中' }
         }
 
         try {
             const client = new GoofishClient(accountId, this.onMessage)
-            const success = await client.run()
+            const r = await client.run()
 
-            if (success) {
+            if (r.success) {
                 this.clients.set(accountId, client)
                 logger.info(`账号 ${accountId} 启动成功`)
-                return true
+                return { success: true, expired: false }
             } else {
-                logger.error(`账号 ${accountId} 启动失败`)
-                updateAccountStatus({ accountId, connected: false, errorMessage: '启动失败' })
-                return false
+                logger.error(`账号 ${accountId} 启动失败: ${r.error || ''}`)
+                updateAccountStatus({
+                    accountId,
+                    connected: false,
+                    errorMessage: r.expired ? '登录已过期，请重新登录' : (r.error || '启动失败')
+                })
+                return { success: false, expired: r.expired, error: r.error }
             }
         } catch (e: any) {
             logger.error(`账号 ${accountId} 启动异常: ${e.message}`)
             updateAccountStatus({ accountId, connected: false, errorMessage: e.message })
-            return false
+            return { success: false, expired: false, error: e.message }
         }
     }
 
@@ -65,7 +69,7 @@ export class ClientManager {
     }
 
     // 重启单个客户端
-    async restartClient(accountId: string): Promise<boolean> {
+    async restartClient(accountId: string): Promise<{ success: boolean; expired: boolean; error?: string }> {
         this.stopClient(accountId)
         await new Promise(r => setTimeout(r, 1000))
         return this.startClient(accountId)

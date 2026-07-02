@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { message, Modal } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
   ReloadOutlined,
   SendOutlined,
   SmileOutlined,
   PictureOutlined,
-  ScissorOutlined
+  ScissorOutlined,
+  SoundOutlined
 } from '@ant-design/icons-vue'
+import BenzAMRRecorder from 'benz-amr-recorder'
 import { conversationService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
 import { useGoodsStore } from '@/core/stores/useGoodsStore'
@@ -35,6 +37,7 @@ function renderContent(text: string | undefined): string {
 }
 
 const pushStore = usePushStore()
+const { modal } = App.useApp()
 
 const conversations = ref<Conversation[]>([])
 const selected = ref<Conversation | null>(null)
@@ -253,7 +256,7 @@ async function hideConv(conv: Conversation) {
 }
 
 function confirmDelete(conv: Conversation) {
-  Modal.confirm({
+  modal.confirm({
     title: '删除对话',
     content: `确定删除与 ${conv.userName} 的对话？所有消息将一并删除，且无法恢复。`,
     okText: '删除',
@@ -334,6 +337,54 @@ function imageStyle(extra: any) {
   if (!w || !h) return {}
   if (w >= h) return { width: Math.min(max, w) + 'px', height: 'auto' }
   return { height: Math.min(max, h) + 'px', width: 'auto' }
+}
+
+// ============ 语音播放（AMR，Chromium 原生不支持，用 BenzAMRRecorder 解码） ============
+let amrPlayer: BenzAMRRecorder | null = null
+const voicePlayingId = ref<number | null>(null)
+const voiceLoadingId = ref<number | null>(null)
+
+function formatDuration(extra: any): string {
+  const d = Number(extra?.duration)
+  if (!d || d <= 0) return ''
+  return Math.round(d) + '"'
+}
+
+function stopVoice() {
+  if (amrPlayer) {
+    try { amrPlayer.stop() } catch { /* ignore */ }
+    try { amrPlayer.destroy() } catch { /* ignore */ }
+    amrPlayer = null
+  }
+  voicePlayingId.value = null
+  voiceLoadingId.value = null
+}
+
+async function playVoice(msg: ConversationMessage) {
+  const url = (msg.extra as any)?.url
+  if (!url) return
+  // 切换到另一条语音：先停掉当前
+  if (voicePlayingId.value === msg.id) {
+    stopVoice()
+    return
+  }
+  stopVoice()
+  voiceLoadingId.value = msg.id
+  try {
+    const amr = new BenzAMRRecorder()
+    amr.onEnded(() => {
+      stopVoice()
+    })
+    await amr.initWithUrl(url)
+    amrPlayer = amr
+    voiceLoadingId.value = null
+    voicePlayingId.value = msg.id
+    amr.play()
+  } catch (e) {
+    console.error('语音播放失败', e)
+    message.error('语音播放失败')
+    stopVoice()
+  }
 }
 
 // 乐观追加一条富消息到当前会话
@@ -473,6 +524,7 @@ onUnmounted(() => {
   wsSubscribed = false
   conversationService.setInChat(false)
   window.removeEventListener('keydown', onPreviewEsc)
+  stopVoice()
 })
 
 // 图片预览期间监听 Esc 关闭；开/关随 previewUrl 绑定
@@ -627,6 +679,17 @@ watch(previewUrl, (v) => {
                     <div class="card-title">{{ (item.msg.extra as any)?.title || item.msg.content }}</div>
                     <div class="card-price">¥{{ (item.msg.extra as any)?.price || '-' }}</div>
                   </div>
+                </div>
+                <!-- 语音 -->
+                <div
+                  v-else-if="item.msg.contentType === 4"
+                  class="msg-bubble bubble-voice"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                  @click="playVoice(item.msg)"
+                >
+                  <SoundOutlined class="voice-icon" :class="{ 'voice-icon-playing': voicePlayingId === item.msg.id }" :spin="voicePlayingId === item.msg.id" />
+                  <a-spin v-if="voiceLoadingId === item.msg.id" size="small" class="voice-spin" />
+                  <span class="voice-duration">{{ formatDuration(item.msg.extra) || (voicePlayingId === item.msg.id ? '播放中' : '语音') }}</span>
                 </div>
                 <!-- 未知类型回退文本 -->
                 <div
@@ -1014,6 +1077,30 @@ watch(previewUrl, (v) => {
   font-size: 13px;
   color: #f5222d;
   font-weight: 600;
+}
+/* 语音气泡 */
+.bubble-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  min-width: 72px;
+  cursor: pointer;
+  user-select: none;
+}
+.bubble-voice .voice-icon {
+  font-size: 18px;
+  color: var(--wm-text-secondary, #666);
+}
+.bubble-voice .voice-icon-playing {
+  color: #1677ff;
+}
+.bubble-voice .voice-spin {
+  margin-left: -2px;
+}
+.bubble-voice .voice-duration {
+  font-size: 13px;
+  color: var(--wm-text, #333);
 }
 /* ===== 聊天输入面板 ===== */
 .chat-input-bar {

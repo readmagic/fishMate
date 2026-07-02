@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
-import { Modal, message } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
   PlusOutlined,
   SaveOutlined,
@@ -12,6 +12,7 @@ import { autoReplyService, settingsService } from '@/core/services'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 import type { AutoReplyRule, MatchType } from '@/core/types'
 
+const { modal } = App.useApp()
 const rules = ref<AutoReplyRule[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -136,7 +137,7 @@ async function toggleRule(rule: AutoReplyRule) {
 }
 
 function deleteRule(rule: AutoReplyRule) {
-  Modal.confirm({
+  modal.confirm({
     title: '删除规则',
     content: `确定删除规则 "${rule.name}" 吗？`,
     okType: 'danger',

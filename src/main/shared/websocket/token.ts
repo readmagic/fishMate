@@ -8,6 +8,12 @@ const logger = createLogger('Ws:Token')
 // Session 过期错误标识
 const SESSION_EXPIRED_ERRORS = ['FAIL_SYS_SESSION_EXPIRED', 'SESSION_EXPIRED']
 
+// Token 刷新结果：区分"登录态过期（需重新登录）"与"网络/瞬时失败"
+export interface TokenRefreshResult {
+    token: string | null
+    expired: boolean
+}
+
 export class TokenManager {
     private currentToken: string | null = null
     private lastRefreshTime = 0
@@ -158,9 +164,16 @@ export class TokenManager {
         return { success: false, cookiesUpdated, error: errorMsg }
     }
 
-    async refresh(): Promise<string | null> {
+    async refresh(): Promise<TokenRefreshResult> {
         try {
             logger.info(`[${this.accountId}] 开始刷新Token...`)
+
+            // 无 cookies 直接判定为登录态过期（账号 cookie 丢失，必须重新登录）
+            const cookiesStr = CookiesManager.getCookies(this.accountId)
+            if (!cookiesStr) {
+                logger.error(`[${this.accountId}] 无 cookies，判定登录态过期`)
+                return { token: null, expired: true }
+            }
 
             // 第一次请求
             let result = await this.doTokenRequest()
@@ -172,7 +185,9 @@ export class TokenManager {
             }
 
             // 如果仍然失败且是 Session 过期错误，尝试 hasLogin 刷新
+            let sessionExpiredHit = false
             if (!result.success && result.error && this.isSessionExpiredError(result.error)) {
+                sessionExpiredHit = true
                 logger.info(`[${this.accountId}] Session过期，尝试 hasLogin 刷新...`)
                 const loginSuccess = await this.hasLogin()
                 if (loginSuccess) {
@@ -183,20 +198,24 @@ export class TokenManager {
                         result = await this.doTokenRequest()
                     }
                 }
+                // hasLogin 失败 = session 真的死了，下面判定为 expired
             }
 
             if (result.success && result.token) {
                 this.currentToken = result.token
                 this.lastRefreshTime = Date.now()
                 logger.info(`[${this.accountId}] Token刷新成功`)
-                return this.currentToken
+                return { token: this.currentToken, expired: false }
             }
 
-            logger.error(`[${this.accountId}] Token刷新失败: ${result.error}`)
-            return null
+            // 区分失败原因：Session 过期类错误 → 登录态过期（需重新登录）；其余 → 瞬时失败
+            const expired = sessionExpiredHit
+                || (!!result.error && this.isSessionExpiredError(result.error))
+            logger.error(`[${this.accountId}] Token刷新失败: ${result.error}${expired ? '（登录态过期）' : ''}`)
+            return { token: null, expired }
         } catch (e) {
             logger.error(`[${this.accountId}] Token刷新异常: ${e}`)
-            return null
+            return { token: null, expired: false }
         }
     }
 }

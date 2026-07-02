@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { Modal, message } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
   PlusOutlined,
   SaveOutlined,
@@ -32,6 +32,7 @@ import type {
 
 const router = useRouter()
 const service = autoSellService
+const { modal } = App.useApp()
 
 const rules = ref<AutoSellRule[]>([])
 const workflows = ref<Workflow[]>([])
@@ -324,7 +325,7 @@ async function toggleRule(rule: AutoSellRule) {
   await loadRules()
 }
 function deleteRule(rule: AutoSellRule) {
-  Modal.confirm({
+  modal.confirm({
     title: '确认删除',
     content: `确定要删除规则 "${rule.name}" 吗？`,
     okType: 'danger',
@@ -365,7 +366,7 @@ async function toggleShowUsed() {
   await loadStockItems()
 }
 function clearStock(ruleId: number, onlyUsed: boolean) {
-  Modal.confirm({
+  modal.confirm({
     title: '确认清空',
     content: onlyUsed ? '确定要清空已使用的库存吗？' : '确定要清空所有库存吗？',
     okType: 'danger',

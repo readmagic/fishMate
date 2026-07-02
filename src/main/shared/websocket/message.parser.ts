@@ -87,7 +87,7 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
         const createTime = parseInt(msg1['5'] || msg1[5] || '0')
         const senderName = msg10.senderNick || msg10.reminderTitle || '未知用户'
         const senderId = msg10.senderUserId || 'unknown'
-        const content = msg10.reminderContent || ''
+        let content = msg10.reminderContent || ''
 
         // 提取 chatId
         const chatIdRaw = msg1['2'] || msg1[2] || ''
@@ -205,6 +205,47 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             ? new Date(createTime).toLocaleString('zh-CN', { hour12: false })
             : new Date().toLocaleString('zh-CN', { hour12: false })
 
+        // 解析结构化消息体（msg1.6.3），回填 contentType / extra
+        // payload 判别以字段为准：image→图片(2)，itemCard→卡片(3)，audio→语音(4)
+        // 注意：payload 自身的 contentType 数字与本项目的 contentType 语义不一致
+        // （卡片 payload.contentType=7，语音 payload.contentType=3），不可作为判别依据
+        let contentType: number | undefined
+        let extra: Record<string, unknown> | undefined
+        try {
+            const msg6 = msg1['6'] || msg1[6]
+            const msg63 = msg6?.['3'] || msg6?.[3]
+            const payloadStr = msg63?.['5'] || msg63?.[5]
+            if (typeof payloadStr === 'string' && payloadStr.trim() !== '') {
+                const payload = JSON.parse(payloadStr)
+                if (payload?.image?.pics?.[0]?.url) {
+                    const pic = payload.image.pics[0]
+                    contentType = 2
+                    extra = { url: pic.url, width: pic.width, height: pic.height }
+                } else if (payload?.itemCard?.item) {
+                    const item = payload.itemCard.item
+                    contentType = 3
+                    // 渲染端 price 前已带 ¥，剥离冗余前缀避免重复
+                    const rawPrice = typeof item.price === 'string' ? item.price : String(item.price ?? '')
+                    const price = rawPrice.replace(/^[¥￥]/, '').trim()
+                    extra = { itemId: item.itemId, picUrl: item.mainPic, title: item.title, price }
+                } else if (payload?.audio?.url) {
+                    // 语音（AMR）：渲染端用 BenzAMRRecorder 解码播放
+                    contentType = 4
+                    extra = { url: payload.audio.url, duration: payload.audio.duration }
+                }
+            }
+        } catch {
+            // 忽略解析失败，按文本消息处理
+        }
+
+        // 结构化消息兜底文案：reminderContent 偶尔为空，避免被空消息过滤丢弃
+        if ((!content || content.trim() === '') && contentType) {
+            content = contentType === 2 ? '[图片]'
+                : contentType === 3 ? ((extra?.title as string) || '[链接]')
+                : contentType === 4 ? '[语音]'
+                : content
+        }
+
         // 检查是否是订单状态消息
         const isOrderMessage = isOrderStatusMessage(content)
 
@@ -240,7 +281,9 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             orderId,
             orderStatus,
             isOrderMessage,
-            itemId
+            itemId,
+            contentType,
+            extra
         }
     } catch (e) {
         logger.error(`提取聊天消息失败: ${e}`)

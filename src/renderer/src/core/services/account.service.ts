@@ -19,7 +19,7 @@ export const accountService = {
     return invoke<{ success: boolean }>('account:delete', { id })
   },
   startAccount(id: string) {
-    return invoke<{ success: boolean }>('account:start', { id })
+    return invoke<{ success: boolean; expired?: boolean; error?: string }>('account:start', { id })
   },
   stopAccount(id: string) {
     return invoke<{ success: boolean }>('account:stop', { id })

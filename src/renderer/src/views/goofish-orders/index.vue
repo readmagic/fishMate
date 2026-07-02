@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, h, watch, computed } from 'vue'
-import { Modal, message } from 'ant-design-vue'
+import { App, message } from 'ant-design-vue'
 import {
   ReloadOutlined,
   DownloadOutlined,
@@ -15,6 +15,7 @@ import type { Order, Account } from '@/core/types'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
 
 const pushStore = usePushStore()
+const { modal } = App.useApp()
 const loading = ref(false)
 const refreshing = ref<string | null>(null)
 const shipping = ref<string | null>(null)
@@ -131,7 +132,7 @@ async function refreshOrder(order: Order) {
 }
 
 function confirmShip(order: Order, free: boolean) {
-  Modal.confirm({
+  modal.confirm({
     title: free ? '确认免拼发货' : '确认发货',
     content: h('div', [
       h('p', `订单号：${order.orderId}`),
@@ -161,7 +162,7 @@ function confirmShip(order: Order, free: boolean) {
 }
 
 function deleteOrder(order: Order) {
-  Modal.confirm({
+  modal.confirm({
     title: '删除订单',
     content: '确定要删除此订单记录吗？删除后无法找回。',
     okType: 'danger',
@@ -355,8 +356,6 @@ onUnmounted(() => {
   <a-modal
     v-model:open="manualVisible"
     title="手动获取订单"
-    ok-text="确定"
-    cancel-text="取消"
     :confirm-loading="fetching"
     @ok="fetchManualOrder"
   >
