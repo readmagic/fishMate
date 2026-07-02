@@ -58,6 +58,15 @@ function resolveTrayIconPath() {
     : path.join(__dirname, '../../src/renderer/public/tray-logo.png')
 }
 
+function resolveWindowIconPath() {
+  // 512 方形应用图标，供 BrowserWindow 在 Linux 下设置窗口/任务栏图标
+  // dev: dist/main → src/renderer/public/app-icon.png
+  // 打包后: app.asar/dist/main → ../renderer/app-icon.png
+  return app.isPackaged
+    ? path.join(__dirname, '../renderer/app-icon.png')
+    : path.join(__dirname, '../../src/renderer/public/app-icon.png')
+}
+
 function createTray() {
   if (tray) return
   trayIcon = nativeImage.createFromPath(resolveTrayIconPath()).resize({ width: 32, height: 32 })
@@ -158,6 +167,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'fishMate',
+    icon: resolveWindowIconPath(),
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#f5f5f5',
