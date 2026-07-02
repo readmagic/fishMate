@@ -28,7 +28,7 @@ export {
 } from './message.service.js'
 
 // 商品服务
-export { fetchGoodsList } from './goods.service.js'
+export { fetchGoodsList, delistItem } from './goods.service.js'
 
 // 用户服务
 export {

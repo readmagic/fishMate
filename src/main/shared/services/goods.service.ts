@@ -2,7 +2,7 @@
  * 商品服务
  */
 
-import { API_ENDPOINTS, WS_CONFIG } from '../core/constants.js'
+import { API_ENDPOINTS, API_METHODS, WS_CONFIG } from '../core/constants.js'
 import { CookiesManager } from '../core/cookies.manager.js'
 import { generateSign } from '../utils/crypto.js'
 import { createLogger } from '../core/logger.js'
@@ -100,5 +100,74 @@ export async function fetchGoodsList(
     } catch (e) {
         logger.error(`[${accountId}] 获取商品列表异常: ${e}`)
         return { items: [], nextPage: false, totalCount: 0 }
+    }
+}
+
+/**
+ * 下架商品（com.taobao.idle.item.delete v1.1，写操作）
+ */
+export async function delistItem(
+    accountId: string,
+    itemId: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const cookiesStr = CookiesManager.getCookies(accountId)
+        if (!cookiesStr) {
+            return { success: false, error: '无法获取 cookies' }
+        }
+
+        const h5Token = CookiesManager.getH5Token(accountId)
+        if (!h5Token) {
+            return { success: false, error: 'h5Token 为空' }
+        }
+
+        const timestamp = Date.now().toString()
+        const dataVal = JSON.stringify({ itemId })
+        const sign = generateSign(timestamp, h5Token, dataVal)
+
+        const params = new URLSearchParams({
+            jsv: '2.7.2',
+            appKey: WS_CONFIG.SIGN_APP_KEY,
+            t: timestamp,
+            sign,
+            v: '1.1',
+            type: 'originaljson',
+            accountSite: 'xianyu',
+            dataType: 'json',
+            timeout: '20000',
+            api: API_METHODS.ITEM_DELETE,
+            sessionOption: 'AutoLoginOnly',
+            spm_cnt: 'a21ybx.item.0.0'
+        })
+
+        logger.info(`[${accountId}] 下架商品请求 - itemId: ${itemId}`)
+
+        const res = await fetch(`${API_ENDPOINTS.ITEM_DELETE}?${params}`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://www.goofish.com',
+                'referer': 'https://www.goofish.com/',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'cookie': cookiesStr
+            },
+            body: `data=${encodeURIComponent(dataVal)}`
+        })
+
+        CookiesManager.handleResponseCookies(accountId, res)
+        const resJson = await res.json()
+
+        if (resJson?.ret?.some((r: string) => r.includes('SUCCESS'))) {
+            logger.info(`[${accountId}] 下架商品成功: ${itemId}`)
+            return { success: true }
+        }
+
+        const retMsg = resJson?.ret?.join(', ') || '未知错误'
+        logger.warn(`[${accountId}] 下架商品失败: ${retMsg}`)
+        return { success: false, error: retMsg }
+    } catch (e) {
+        logger.error(`[${accountId}] 下架商品异常: ${e}`)
+        return { success: false, error: String(e) }
     }
 }

@@ -1,11 +1,17 @@
 import { ipcMain, session } from 'electron'
 import { getAllAccounts, getAccount } from '../shared/db/index.js'
-import { fetchGoodsList } from '../shared/services/index.js'
+import { fetchGoodsList, delistItem } from '../shared/services/index.js'
 import { CookiesManager } from '../shared/core/cookies.manager.js'
 import { parseCookies } from '../shared/utils/cookies.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
 
 export function registerGoodsIPC(cm: ClientManager) {
+    ipcMain.handle('goods:delist', async (_e, { accountId, itemId }: { accountId: string; itemId: string }) => {
+        if (!accountId || !itemId) return { success: false, error: 'Missing accountId or itemId' }
+        const account = getAccount(accountId)
+        if (!account) return { success: false, error: 'Account not found' }
+        return delistItem(accountId, itemId)
+    })
     ipcMain.handle('goods:list', async (_e, { accountId, page = 1 }: { accountId?: string; page?: number }) => {
         if (accountId) {
             const account = getAccount(accountId)

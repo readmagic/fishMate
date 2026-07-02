@@ -10,5 +10,8 @@ export const goodsService = {
   },
   injectCookies(accountId?: string) {
     return invoke<{ success: boolean }>('goods:injectCookies', { accountId })
+  },
+  delistGoods(accountId: string, itemId: string) {
+    return invoke<{ success: boolean; error?: string }>('goods:delist', { accountId, itemId })
   }
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { App, message } from 'ant-design-vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { goodsService, accountService } from '@/core/services'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
@@ -15,6 +16,8 @@ const selectedStatus = ref<string>(localStorage.getItem(STORAGE_KEY_STATUS) || '
 const loading = ref(false)
 const totalCount = ref(0)
 const selectedGoodsId = ref<string | null>(null)
+
+const { modal } = App.useApp()
 
 const filteredGoods = computed(() => {
   if (selectedStatus.value === '') return goods.value
@@ -143,6 +146,40 @@ function statusColor(s: number) {
   return s === 0 ? 'green' : s === 1 ? 'orange' : 'default'
 }
 
+// 右键菜单：下架商品
+function onContextClick(key: string, item: GoodsItem) {
+  if (key === 'delist') onDelist(item)
+}
+
+function onDelist(item: GoodsItem) {
+  if (item.itemStatus === 1) {
+    message.info('该商品已下架')
+    return
+  }
+  if (!item.accountId) {
+    message.error('未知账号，无法下架')
+    return
+  }
+  modal.confirm({
+    title: '下架商品',
+    content: `确定下架「${item.title}」吗？下架后买家将看不到此商品。`,
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        const res = await goodsService.delistGoods(item.accountId!, item.id)
+        if (res.success) {
+          message.success('已下架')
+          await loadGoods()
+        } else {
+          message.error(res.error || '下架失败')
+        }
+      } catch (e) {
+        message.error('下架失败')
+      }
+    }
+  })
+}
+
 onMounted(() => {
   loadAccounts()
   loadGoods()
@@ -173,27 +210,38 @@ onMounted(() => {
         <a-spin :spinning="loading">
           <a-empty v-if="filteredGoods.length === 0" description="暂无商品" />
           <div v-else class="goods-list">
-            <div
+            <a-dropdown
               v-for="item in filteredGoods"
               :key="item.id"
-              class="goods-row"
-              :class="{ active: selectedGoodsId === item.id }"
-              @click="selectedGoodsId = item.id"
+              trigger="contextmenu"
             >
-              <div class="thumb-wrap">
-                <img :src="item.picUrl" :alt="item.title" class="thumb" loading="lazy" />
-                <a-tag v-if="item.hasVideo" class="badge-video">视频</a-tag>
-              </div>
-              <div class="row-meta">
-                <p class="row-title" :title="item.title">{{ item.title }}</p>
-                <div class="row-bottom">
-                  <span class="price">¥{{ item.price }}</span>
-                  <a-tag :color="statusColor(item.itemStatus)" class="status-tag">
-                    {{ statusText(item.itemStatus) }}
-                  </a-tag>
+              <div
+                class="goods-row"
+                :class="{ active: selectedGoodsId === item.id }"
+                @click="selectedGoodsId = item.id"
+              >
+                <div class="thumb-wrap">
+                  <img :src="item.picUrl" :alt="item.title" class="thumb" loading="lazy" />
+                  <a-tag v-if="item.hasVideo" class="badge-video">视频</a-tag>
+                </div>
+                <div class="row-meta">
+                  <p class="row-title" :title="item.title">{{ item.title }}</p>
+                  <div class="row-bottom">
+                    <span class="price">¥{{ item.price }}</span>
+                    <a-tag :color="statusColor(item.itemStatus)" class="status-tag">
+                      {{ statusText(item.itemStatus) }}
+                    </a-tag>
+                  </div>
                 </div>
               </div>
-            </div>
+              <template #overlay>
+                <a-menu @click="({ key }: { key: string }) => onContextClick(key, item)">
+                  <a-menu-item key="delist" :disabled="item.itemStatus === 1" danger>
+                    下架
+                  </a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </div>
         </a-spin>
       </div>

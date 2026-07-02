@@ -27,7 +27,8 @@ export const API_METHODS = {
     HAS_LOGIN: 'newlogin/hasLogin.do',
     ORDER_DETAIL: 'mtop.idle.web.trade.order.detail',
     CONFIRM_SHIPMENT: 'mtop.taobao.idle.logistic.consign.dummy',
-    FREE_SHIPPING: 'mtop.idle.groupon.activity.seller.freeshipping'
+    FREE_SHIPPING: 'mtop.idle.groupon.activity.seller.freeshipping',
+    ITEM_DELETE: 'com.taobao.idle.item.delete'
 }
 
 // Passport API 配置
@@ -49,7 +50,9 @@ export const API_ENDPOINTS = {
     USER_HEAD: buildApiUrl(API_METHODS.USER_HEAD),
     ORDER_DETAIL: buildApiUrl(API_METHODS.ORDER_DETAIL),
     CONFIRM_SHIPMENT: buildApiUrl(API_METHODS.CONFIRM_SHIPMENT),
-    FREE_SHIPPING: buildApiUrl(API_METHODS.FREE_SHIPPING)
+    FREE_SHIPPING: buildApiUrl(API_METHODS.FREE_SHIPPING),
+    // 下架接口版本为 1.1
+    ITEM_DELETE: buildApiUrl(API_METHODS.ITEM_DELETE, '1.1')
 }
 
 // WebSocket 请求头
