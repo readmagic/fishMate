@@ -16,7 +16,8 @@ export {
     markAsRead,
     markOutgoingRead,
     deleteConversation,
-    setConversationHidden
+    setConversationHidden,
+    setConversationPinned
 } from './conversation.service.js'
 
 // 消息服务

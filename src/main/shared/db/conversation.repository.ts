@@ -11,12 +11,12 @@ import type {
     AddConversationMessageParams
 } from '../types/index.js'
 
-// 获取对话列表（分页，排除已隐藏）
+// 获取对话列表（分页，排除已隐藏；置顶在前，按 last_time 二次排序）
 export function getConversations(limit = 20, offset = 0): DbConversation[] {
     const stmt = db.prepare(`
-        SELECT account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread, item_id
+        SELECT account_id, chat_id, user_id, user_name, user_avatar, last_message, last_time, unread, item_id, pinned
         FROM conversations WHERE hidden = 0
-        ORDER BY last_time DESC LIMIT ? OFFSET ?
+        ORDER BY pinned DESC, last_time DESC LIMIT ? OFFSET ?
     `)
     return stmt.all(limit, offset) as DbConversation[]
 }
@@ -90,6 +90,13 @@ export function deleteConversation(accountId: string, chatId: string) {
 export function setConversationHidden(accountId: string, chatId: string, hidden: boolean) {
     const stmt = db.prepare('UPDATE conversations SET hidden = ? WHERE account_id = ? AND chat_id = ?')
     stmt.run(hidden ? 1 : 0, accountId, chatId)
+    emitConversationsUpdated()
+}
+
+// 设置会话置顶/取消置顶（pinned=1 时列表中排在前）
+export function setConversationPinned(accountId: string, chatId: string, pinned: boolean) {
+    const stmt = db.prepare('UPDATE conversations SET pinned = ? WHERE account_id = ? AND chat_id = ?')
+    stmt.run(pinned ? 1 : 0, accountId, chatId)
     emitConversationsUpdated()
 }
 

@@ -42,6 +42,7 @@ export {
     markConversationRead,
     deleteConversation,
     setConversationHidden,
+    setConversationPinned,
     getConversationMessages,
     getConversationMessageCount,
     getTotalConversationMessageCount,

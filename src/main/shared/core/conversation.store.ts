@@ -12,7 +12,8 @@ import {
     getConversationDetail,
     markAsRead,
     deleteConversation as deleteConv,
-    setConversationHidden as setHiddenConv
+    setConversationHidden as setHiddenConv,
+    setConversationPinned
 } from '../services/index.js'
 import type { ChatMessage, Conversation } from '../types/index.js'
 
@@ -63,6 +64,10 @@ class ConversationStore {
 
     setHidden(accountId: string, chatId: string, hidden: boolean) {
         setHiddenConv(accountId, chatId, hidden)
+    }
+
+    setPinned(accountId: string, chatId: string, pinned: boolean) {
+        setConversationPinned(accountId, chatId, pinned)
     }
 }
 

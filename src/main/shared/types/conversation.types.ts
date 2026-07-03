@@ -19,6 +19,8 @@ export interface Conversation {
     messages?: ConversationMessage[]
     // 会话绑定的商品ID（从消息 reminderUrl 提取，可能为空）
     itemId?: string
+    // 置顶：0=普通 1=置顶
+    pinned?: number
 }
 
 // 数据库对话记录
@@ -32,6 +34,7 @@ export interface DbConversation {
     last_time: number
     unread: number
     item_id: string | null
+    pinned: number
 }
 
 // 数据库对话消息记录

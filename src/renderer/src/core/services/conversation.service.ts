@@ -17,6 +17,9 @@ export const conversationService = {
   setHidden(accountId: string, chatId: string, hidden: boolean) {
     return invoke<{ success: boolean }>('conversation:setHidden', { accountId, chatId, hidden })
   },
+  setPinned(accountId: string, chatId: string, pinned: boolean) {
+    return invoke<{ success: boolean }>('conversation:setPinned', { accountId, chatId, pinned })
+  },
   sendMessage(accountId: string, chatId: string, toUserId: string, text: string) {
     return invoke<{ success: boolean; error?: string }>('message:send', { accountId, chatId, toUserId, text })
   },

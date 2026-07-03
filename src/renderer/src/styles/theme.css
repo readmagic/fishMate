@@ -1,10 +1,10 @@
 /**
  * fishMate 全局设计系统
  * 设计语言：Fluent Design + macOS 融合 · 极简 · 高级感 · 柔和灰调 · 大留白
- * useThemeStore 已在 <html> 设置 data-theme="light"|"dark"，此处消费该属性。
+ * 单一默认浅色主题（不切换）。data-theme="light" 由 index.html 静态设置。
  */
 
-:root[data-theme='light'] {
+:root {
   /* —— 背景 —— */
   --wm-window-bg: #f7f7f8;        /* 窗口底色 */
   --wm-content-bg: #ffffff;       /* 主内容 / 卡片 */
@@ -65,74 +65,6 @@
   --wm-font: 'Inter', 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system,
     BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
 
-  color-scheme: light;
-}
-
-:root[data-theme='dark'] {
-  /* —— 背景 —— */
-  --wm-window-bg: #1c1c1e;
-  --wm-content-bg: #242426;
-  --wm-rail-bg: #1f1f21;
-  --wm-sidebar-bg: #1f1f21;
-  --wm-card-bg: #2a2a2c;
-  --wm-header-bg: #1f1f21;
-
-  /* —— 文字 —— */
-  --wm-text: #e8e8ea;
-  --wm-text-secondary: #b8b8bc;
-  --wm-text-tertiary: #8a8a90;
-  --wm-text-disabled: #555558;
-
-  /* —— 边框 / 分隔 —— */
-  --wm-border: #343436;
-  --wm-rail-sep: #2e2e30;
-
-  /* —— 交互态 —— */
-  --wm-list-hover: rgba(255, 255, 255, 0.05);
-  --wm-list-active: rgba(255, 255, 255, 0.09);
-  --wm-rail-hover-bg: rgba(255, 255, 255, 0.06);
-  --wm-rail-active-bg: rgba(255, 255, 255, 0.1);
-  --wm-rail-icon: #9a9aa0;
-  --wm-rail-icon-hover: #e8e8ea;
-  --wm-rail-icon-active: #18c37e;
-
-  /* —— 主题色 —— */
-  --wm-primary: #18c37e;
-  --wm-primary-hover: #1ad98c;
-  --wm-bubble-in: #2a2a2c;
-  --wm-bubble-out: #18c37e;
-
-  /* —— 尺寸 —— */
-  --wm-rail-width: 56px;
-  --wm-list-width: 220px;
-  --wm-header-height: 40px;
-  --wm-titlebar-height: 40px;
-
-  /* —— 标题栏 —— */
-  --wm-titlebar-bg: #1f1f21;
-  --wm-titlebar-btn-hover: rgba(255, 255, 255, 0.08);
-  --wm-titlebar-close-hover: #e81123;
-
-  /* —— 圆角 —— */
-  --wm-radius-window: 12px;
-  --wm-radius-card: 14px;
-  --wm-radius-modal: 16px;
-  --wm-radius-btn: 10px;
-  --wm-radius-item: 10px;
-  --wm-radius-input: 18px;
-
-  /* —— 阴影 —— */
-  --wm-shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --wm-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35);
-
-  --wm-font: 'Inter', 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', -apple-system,
-    BlinkMacSystemFont, 'Microsoft YaHei', sans-serif;
-
-  color-scheme: dark;
-}
-
-/* 兜底：未设置 data-theme 时按浅色 */
-:root {
   color-scheme: light;
 }
 

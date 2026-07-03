@@ -9,7 +9,8 @@ import {
   ScissorOutlined,
   SoundOutlined,
   EnvironmentOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  PushpinFilled
 } from '@ant-design/icons-vue'
 import BenzAMRRecorder from 'benz-amr-recorder'
 import { conversationService, goodsService } from '@/core/services'
@@ -237,8 +238,31 @@ function isActiveConv(conv: Conversation) {
 watch(() => selected.value?.itemId, () => loadMatchedItem())
 
 function onContextMenu(key: string, conv: Conversation) {
-  if (key === 'hide') hideConv(conv)
+  if (key === 'pin') pinConv(conv)
+  else if (key === 'hide') hideConv(conv)
   else if (key === 'delete') confirmDelete(conv)
+}
+
+// 置顶/取消置顶：乐观更新本地状态并重排，WS 推送到达后兜底校正
+async function pinConv(conv: Conversation) {
+  const next = !conv.pinned
+  conv.pinned = next ? 1 : 0
+  resortConversations()
+  try {
+    await conversationService.setPinned(conv.accountId, conv.chatId, next)
+    message.success(next ? '已置顶' : '已取消置顶')
+  } catch {
+    conv.pinned = next ? 0 : 1
+    resortConversations()
+    message.error('操作失败')
+  }
+}
+
+// 列表本地排序：置顶在前，再按最后消息时间倒序
+function resortConversations() {
+  conversations.value = [...conversations.value].sort((a, b) =>
+    (b.pinned ?? 0) - (a.pinned ?? 0) || b.lastTime - a.lastTime
+  )
 }
 
 async function hideConv(conv: Conversation) {
@@ -666,6 +690,7 @@ function formatFileSize(bytes: any): string {
                 <a-avatar v-else>{{ conv.userName.charAt(0) }}</a-avatar>
                 <div class="conv-meta">
                   <div class="conv-top">
+                    <PushpinFilled v-if="conv.pinned" class="conv-pin" />
                     <span class="conv-name">{{ conv.userName }}</span>
                     <a-tag color="default">{{ conv.accountNickname }}</a-tag>
                     <span class="conv-time">{{ formatTime(conv.lastTime) }}</span>
@@ -676,7 +701,9 @@ function formatFileSize(bytes: any): string {
               </div>
               <template #overlay>
                 <a-menu @click="({ key }: { key: string }) => onContextMenu(key, conv)">
+                  <a-menu-item key="pin">{{ conv.pinned ? '取消置顶' : '置顶' }}</a-menu-item>
                   <a-menu-item key="hide">不显示</a-menu-item>
+                  <a-menu-divider />
                   <a-menu-item key="delete" danger>删除消息</a-menu-item>
                 </a-menu>
               </template>
@@ -962,6 +989,11 @@ function formatFileSize(bytes: any): string {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.conv-pin {
+  color: var(--wm-primary);
+  font-size: 13px;
+  flex-shrink: 0;
 }
 .conv-name {
   font-weight: 600;

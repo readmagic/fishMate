@@ -30,6 +30,11 @@ export function registerConversationIPC() {
         return { success: true }
     })
 
+    ipcMain.handle('conversation:setPinned', async (_e, { accountId, chatId, pinned }) => {
+        conversationStore.setPinned(accountId, chatId, pinned)
+        return { success: true }
+    })
+
     ipcMain.handle('conversation:userAvatar', async (_e, { userId, accountId }) => {
         const account = accountId ? getAccount(accountId) : null
         if (!account) return { error: 'No account available' }

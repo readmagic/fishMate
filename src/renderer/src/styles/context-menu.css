@@ -1,0 +1,78 @@
+/**
+ * 全局右键上下文菜单风格（macOS + Fluent Design 混合 · 毛玻璃 · 极简）
+ *
+ * 设计要点：
+ *  - 白色半透明浮层卡片，圆角 10px，backdrop-filter 毛玻璃
+ *  - 柔和阴影 rgba(0,0,0,0.08)
+ *  - 菜单项高 44px、左右内边距 16px、现代无衬线字体
+ *  - 分割线 1px #EAEAEA
+ *
+ * 实现方式：覆盖 ant-design-vue 的 .ant-dropdown-menu（所有 a-dropdown 共用），
+ * 选择器带 :root 前缀以提高优先级，胜过 antd 运行时注入的同名规则。
+ */
+
+:root {
+  --wm-menu-bg: rgba(255, 255, 255, 0.72);
+  --wm-menu-border: rgba(0, 0, 0, 0.06);
+  --wm-menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --wm-menu-item-hover: rgba(0, 0, 0, 0.05);
+  --wm-menu-item-active: rgba(0, 0, 0, 0.08);
+  --wm-menu-divider: #eaeaea;
+  --wm-menu-text: #202124;
+  --wm-menu-text-danger: #ff4d4f;
+}
+
+/* 卡片容器：毛玻璃 + 圆角 + 阴影 */
+:root .ant-dropdown-menu {
+  background: var(--wm-menu-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--wm-menu-border);
+  border-radius: 10px;
+  box-shadow: var(--wm-menu-shadow);
+  padding: 6px;
+}
+
+/* 菜单项：高 44px、左右 16px、圆角条目 */
+:root .ant-dropdown-menu-item,
+:root .ant-dropdown-menu-submenu-title {
+  height: 44px;
+  line-height: 44px;
+  padding-inline: 16px;
+  margin-block: 1px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--wm-menu-text);
+  transition: background 0.12s ease;
+}
+
+/* hover / 选中态：柔和灰底，不用主题色高亮（保持极简） */
+:root .ant-dropdown-menu-item:hover,
+:root .ant-dropdown-menu-item-active,
+:root .ant-dropdown-menu-submenu-title:hover,
+:root .ant-dropdown-menu-submenu-title-active {
+  background: var(--wm-menu-item-hover);
+}
+
+:root .ant-dropdown-menu-item:active,
+:root .ant-dropdown-menu-submenu-title:active {
+  background: var(--wm-menu-item-active);
+}
+
+/* 危险项（如"下架/删除"）：红色文字 */
+:root .ant-dropdown-menu-item-danger,
+:root .ant-dropdown-menu-item-danger:hover {
+  color: var(--wm-menu-text-danger);
+}
+
+/* 分割线：1px 浅灰 */
+:root .ant-dropdown-menu-item-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--wm-menu-divider);
+}
+
+/* 收窄默认箭头与图标间距，保持留白 */
+:root .ant-dropdown-menu-item .anticon {
+  margin-inline-end: 8px;
+}

@@ -86,6 +86,8 @@ function createConversationTables() {
   safeAddColumn('conversations', 'hidden', 'INTEGER DEFAULT 0')
   // 会话绑定的商品ID（从消息 reminderUrl 深链提取）
   safeAddColumn('conversations', 'item_id', 'TEXT')
+  // 置顶：0=普通 1=置顶（列表中置顶者在前，按 last_time 二次排序）
+  safeAddColumn('conversations', 'pinned', 'INTEGER DEFAULT 0')
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversation_messages (

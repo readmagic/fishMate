@@ -12,6 +12,7 @@ import {
     markConversationRead,
     deleteConversation as deleteConversationDb,
     setConversationHidden as setConversationHiddenDb,
+    setConversationPinned as setConversationPinnedDb,
     getConversationMessages,
     getConversationMessageCount,
     addConversationMessage,
@@ -191,7 +192,8 @@ export function getAllConversations(
             lastTime: c.last_time,
             unread: c.unread,
             messageCount: getConversationMessageCount(c.account_id, c.chat_id),
-            itemId: c.item_id || undefined
+            itemId: c.item_id || undefined,
+            pinned: c.pinned ?? 0
         }
     })
 
@@ -272,4 +274,11 @@ export function deleteConversation(accountId: string, chatId: string) {
  */
 export function setConversationHidden(accountId: string, chatId: string, hidden: boolean) {
     setConversationHiddenDb(accountId, chatId, hidden)
+}
+
+/**
+ * 设置会话置顶/取消置顶
+ */
+export function setConversationPinned(accountId: string, chatId: string, pinned: boolean) {
+    setConversationPinnedDb(accountId, chatId, pinned)
 }

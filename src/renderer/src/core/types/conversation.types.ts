@@ -31,6 +31,8 @@ export interface Conversation {
     messages?: ConversationMessage[];
     // 会话绑定的商品ID（从消息 reminderUrl 提取，可能为空）
     itemId?: string;
+    // 置顶：0=普通 1=置顶
+    pinned?: number;
 }
 
 export interface ConversationListResponse {
