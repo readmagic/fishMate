@@ -1,15 +1,42 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { App, message } from 'ant-design-vue'
-import { ReloadOutlined } from '@ant-design/icons-vue'
+import { ReloadOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { goodsService, accountService } from '@/core/services'
 import TwoPaneLayout from '@/components/TwoPaneLayout.vue'
-import type { GoodsItem, Account } from '@/core/types'
+import type { GoodsItem, Account, GoodsDraft, GoodsDraftImage } from '@/core/types'
+
+// 闲鱼 SpBizType 类目枚举（文字↔数字固定映射，发布时直接用）
+const CATEGORIES: { id: number; name: string }[] = [
+  { id: 1, name: '手机' },
+  { id: 2, name: '潮品' },
+  { id: 3, name: '家电' },
+  { id: 8, name: '乐器' },
+  { id: 9, name: '3C数码' },
+  { id: 16, name: '奢品' },
+  { id: 17, name: '母婴' },
+  { id: 18, name: '美妆个护' },
+  { id: 19, name: '文玩/珠宝' },
+  { id: 20, name: '游戏电玩' },
+  { id: 21, name: '家居' },
+  { id: 22, name: '虚拟游戏' },
+  { id: 23, name: '租号' },
+  { id: 24, name: '图书' },
+  { id: 25, name: '卡券' },
+  { id: 27, name: '食品' },
+  { id: 28, name: '潮玩' },
+  { id: 29, name: '二手车' },
+  { id: 30, name: '宠植' },
+  { id: 31, name: '工艺礼品' },
+  { id: 33, name: '汽车服务' },
+  { id: 99, name: '其他' }
+]
 
 const STORAGE_KEY_ACCOUNT = 'goofish_goods_filter_account'
 const STORAGE_KEY_STATUS = 'goofish_goods_filter_status'
 
 const goods = ref<GoodsItem[]>([])
+const drafts = ref<GoodsDraft[]>([])
 const accounts = ref<Account[]>([])
 const selectedAccountId = ref(localStorage.getItem(STORAGE_KEY_ACCOUNT) || '')
 const selectedStatus = ref<string>(localStorage.getItem(STORAGE_KEY_STATUS) || '')
@@ -19,6 +46,9 @@ const selectedGoodsId = ref<string | null>(null)
 
 const { modal } = App.useApp()
 
+// 草稿 id 以 'draft-' 前缀区分线上商品
+const isDraft = (id: string) => id.startsWith('draft-')
+
 const filteredGoods = computed(() => {
   if (selectedStatus.value === '') return goods.value
   return goods.value.filter((i) => i.itemStatus === Number(selectedStatus.value))
@@ -27,11 +57,12 @@ const filteredGoods = computed(() => {
 const selectedGoods = computed(() => goods.value.find((g) => g.id === selectedGoodsId.value) || null)
 
 // 选中商品 → 注入账号 cookie 到 webview session → 加载 goofish 商品页
+// 草稿不走 webview（由行点击直接打开编辑表单）
 const webviewSrc = ref('')
 const wvRef = ref<any>(null)
 watch(selectedGoods, async (g) => {
   webviewSrc.value = ''
-  if (!g) return
+  if (!g || isDraft(g.id)) return
   if (g.accountId) {
     try { await goodsService.injectCookies(g.accountId) } catch { /* ignore */ }
   }
@@ -115,9 +146,26 @@ async function loadAccounts() {
 async function loadGoods() {
   loading.value = true
   try {
-    const res = await goodsService.getGoods(selectedAccountId.value || undefined)
-    goods.value = res.items
-    totalCount.value = res.totalCount
+    const [res, draftList] = await Promise.all([
+      goodsService.getGoods(selectedAccountId.value || undefined),
+      goodsService.getDrafts(selectedAccountId.value || undefined)
+    ])
+    drafts.value = draftList
+    // 草稿映射成 GoodsItem 形态（itemStatus=2），置顶展示
+    const draftItems: GoodsItem[] = draftList.map((d) => ({
+      id: d.id,
+      title: d.title,
+      price: d.price,
+      picUrl: d.picUrl,
+      picWidth: d.picWidth,
+      picHeight: d.picHeight,
+      categoryId: d.categoryId,
+      itemStatus: 2,
+      hasVideo: false,
+      accountId: d.accountId
+    }))
+    goods.value = [...draftItems, ...res.items]
+    totalCount.value = res.totalCount + draftItems.length
     if (selectedGoodsId.value && !goods.value.some((g) => g.id === selectedGoodsId.value)) {
       selectedGoodsId.value = null
     }
@@ -140,15 +188,148 @@ function onStatusChange(v: string) {
 }
 
 function statusText(s: number) {
-  return s === 0 ? '在售' : s === 1 ? '已下架' : '未知'
+  return s === 0 ? '在售' : s === 1 ? '已下架' : s === 2 ? '草稿' : '未知'
 }
 function statusColor(s: number) {
-  return s === 0 ? 'green' : s === 1 ? 'orange' : 'default'
+  return s === 0 ? 'green' : s === 1 ? 'orange' : s === 2 ? 'blue' : 'default'
 }
 
-// 右键菜单：下架商品
+// ========== 草稿表单 ==========
+interface DraftForm {
+  id?: string
+  accountId: string
+  title: string
+  price: number | null
+  originalPrice: number | null
+  categoryId: number | null
+  images: GoodsDraftImage[]
+  description: string
+}
+const draftModalVisible = ref(false)
+const draftSaving = ref(false)
+const draftUploading = ref(false)
+const draftForm = ref<DraftForm>(emptyDraftForm())
+
+function emptyDraftForm(): DraftForm {
+  return {
+    accountId: '',
+    title: '',
+    price: null,
+    originalPrice: null,
+    categoryId: null,
+    images: [],
+    description: ''
+  }
+}
+
+function openDraftForm() {
+  draftForm.value = { ...emptyDraftForm(), accountId: selectedAccountId.value || '' }
+  draftModalVisible.value = true
+}
+
+function openDraftEdit(id: string) {
+  const d = drafts.value.find((x) => x.id === id)
+  if (!d) return
+  draftForm.value = {
+    id: d.id,
+    accountId: d.accountId || '',
+    title: d.title,
+    price: Number(d.price) || null,
+    originalPrice: d.originalPrice ? Number(d.originalPrice) : null,
+    categoryId: d.categoryId || null,
+    images: [...d.images],
+    description: d.description || ''
+  }
+  draftModalVisible.value = true
+}
+
+function onRowClick(item: GoodsItem) {
+  selectedGoodsId.value = item.id
+  if (isDraft(item.id)) openDraftEdit(item.id)
+}
+
+async function onDraftUploadImages() {
+  if (!draftForm.value.accountId) {
+    message.warning('请先选择账号')
+    return
+  }
+  draftUploading.value = true
+  try {
+    const res = await goodsService.uploadImages(draftForm.value.accountId)
+    if (!res.success) {
+      message.error(res.error || '上传失败')
+      return
+    }
+    if (res.images.length) draftForm.value.images.push(...res.images)
+  } catch (e) {
+    message.error('上传失败')
+  } finally {
+    draftUploading.value = false
+  }
+}
+
+function removeDraftImage(idx: number) {
+  draftForm.value.images.splice(idx, 1)
+}
+
+async function onDraftSubmit() {
+  const f = draftForm.value
+  if (!f.accountId) { message.warning('请选择账号'); return }
+  if (!f.title.trim()) { message.warning('请输入标题'); return }
+  if (f.price == null || f.price < 0) { message.warning('请输入价格'); return }
+  draftSaving.value = true
+  try {
+    const payload = {
+      accountId: f.accountId,
+      title: f.title.trim(),
+      price: String(f.price),
+      originalPrice: f.originalPrice != null ? String(f.originalPrice) : undefined,
+      images: f.images,
+      categoryId: f.categoryId ?? 0,
+      description: f.description.trim() || undefined
+    }
+    if (f.id) {
+      await goodsService.updateDraft({ id: f.id, ...JSON.parse(JSON.stringify(payload)) })
+    } else {
+      await goodsService.createDraft(JSON.parse(JSON.stringify(payload)))
+    }
+    message.success(f.id ? '已保存' : '已添加草稿')
+    draftModalVisible.value = false
+    await loadGoods()
+  } catch (e: any) {
+    message.error(`保存失败：${e?.message || e}`)
+  } finally {
+    draftSaving.value = false
+  }
+}
+
+function onDraftDelete(item: GoodsItem) {
+  modal.confirm({
+    title: '删除草稿',
+    content: `确定删除草稿「${item.title}」吗？此操作不可恢复。`,
+    okType: 'danger',
+    onOk: async () => {
+      try {
+        const res = await goodsService.deleteDraft(item.id)
+        if (res.success) {
+          message.success('已删除')
+          if (selectedGoodsId.value === item.id) selectedGoodsId.value = null
+          await loadGoods()
+        } else {
+          message.error('删除失败')
+        }
+      } catch (e) {
+        message.error('删除失败')
+      }
+    }
+  })
+}
+
+// 右键菜单：线上商品=下架，草稿=编辑/删除
 function onContextClick(key: string, item: GoodsItem) {
   if (key === 'delist') onDelist(item)
+  else if (key === 'edit') openDraftEdit(item.id)
+  else if (key === 'delete') onDraftDelete(item)
 }
 
 function onDelist(item: GoodsItem) {
@@ -200,9 +381,13 @@ onMounted(() => {
           <a-select-option value="">全部状态</a-select-option>
           <a-select-option value="0">在售</a-select-option>
           <a-select-option value="1">已下架</a-select-option>
+          <a-select-option value="2">草稿</a-select-option>
         </a-select>
         <a-button size="small" :loading="loading" @click="loadGoods">
           <template #icon><ReloadOutlined /></template>
+        </a-button>
+        <a-button size="small" type="primary" @click="openDraftForm">
+          <template #icon><PlusOutlined /></template>
         </a-button>
       </div>
       <div class="list-meta">共 {{ totalCount }} 件商品</div>
@@ -218,7 +403,7 @@ onMounted(() => {
               <div
                 class="goods-row"
                 :class="{ active: selectedGoodsId === item.id }"
-                @click="selectedGoodsId = item.id"
+                @click="onRowClick(item)"
               >
                 <div class="thumb-wrap">
                   <img :src="item.picUrl" :alt="item.title" class="thumb" loading="lazy" />
@@ -236,7 +421,11 @@ onMounted(() => {
               </div>
               <template #overlay>
                 <a-menu @click="({ key }: { key: string }) => onContextClick(key, item)">
-                  <a-menu-item key="delist" :disabled="item.itemStatus === 1" danger>
+                  <template v-if="isDraft(item.id)">
+                    <a-menu-item key="edit">编辑</a-menu-item>
+                    <a-menu-item key="delete" danger>删除</a-menu-item>
+                  </template>
+                  <a-menu-item v-else key="delist" :disabled="item.itemStatus === 1" danger>
                     下架
                   </a-menu-item>
                 </a-menu>
@@ -248,7 +437,7 @@ onMounted(() => {
     </template>
 
     <template #detail>
-      <div v-if="selectedGoods" class="detail-webview-wrap">
+      <div v-if="selectedGoods && !isDraft(selectedGoods.id)" class="detail-webview-wrap">
         <webview
           v-if="webviewSrc"
           ref="wvRef"
@@ -261,11 +450,109 @@ onMounted(() => {
         />
         <div v-else class="detail-loading"><a-spin /></div>
       </div>
+      <div v-else-if="selectedGoods && isDraft(selectedGoods.id)" class="detail-empty">
+        <p style="color: var(--wm-text-secondary)">草稿商品 — 右键可编辑或删除</p>
+      </div>
       <div v-else class="detail-empty">
         <a-empty description="选择一个商品查看详情" />
       </div>
     </template>
   </TwoPaneLayout>
+
+  <!-- 添加/编辑草稿商品表单 -->
+  <a-modal
+    v-model:open="draftModalVisible"
+    :title="draftForm.id ? '编辑草稿' : '添加商品'"
+    :confirm-loading="draftSaving"
+    :ok-text="draftForm.id ? '保存' : '添加草稿'"
+    :mask-closable="false"
+    width="600px"
+    class="draft-modal"
+    @ok="onDraftSubmit"
+  >
+    <a-form layout="vertical" class="draft-form">
+      <a-form-item label="账号" required>
+        <a-select v-model:value="draftForm.accountId" placeholder="选择账号" show-search option-filter-prop="label">
+          <a-select-option v-for="a in accounts" :key="a.id" :value="a.id" :label="a.nickname || a.id">
+            {{ a.nickname || a.id }}
+          </a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="标题" required>
+        <a-input v-model:value="draftForm.title" placeholder="商品标题" :maxlength="30" show-count />
+      </a-form-item>
+      <a-row :gutter="12">
+        <a-col :span="12">
+          <a-form-item label="价格 (元)" required>
+            <a-input-number
+              v-model:value="draftForm.price"
+              :min="0"
+              :precision="2"
+              :step="0.01"
+              style="width: 100%"
+              placeholder="0.00"
+            />
+          </a-form-item>
+        </a-col>
+        <a-col :span="12">
+          <a-form-item label="原价 (元)">
+            <a-input-number
+              v-model:value="draftForm.originalPrice"
+              :min="0"
+              :precision="2"
+              :step="0.01"
+              style="width: 100%"
+              placeholder="划线价，可选"
+            />
+          </a-form-item>
+        </a-col>
+      </a-row>
+      <a-form-item label="类目">
+        <a-select
+          v-model:value="draftForm.categoryId"
+          placeholder="选择类目"
+          allow-clear
+          show-search
+          option-filter-prop="label"
+        >
+          <a-select-option v-for="c in CATEGORIES" :key="c.id" :value="c.id" :label="c.name">
+            {{ c.name }}
+          </a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="图片">
+        <div class="draft-images">
+          <div
+            v-for="(img, idx) in draftForm.images"
+            :key="img.url"
+            class="draft-img-item"
+          >
+            <img :src="img.url" :alt="`图片${idx + 1}`" />
+            <span v-if="idx === 0" class="cover-badge">封面</span>
+            <button class="del-img" @click="removeDraftImage(idx)">×</button>
+          </div>
+          <a-button
+            class="draft-img-add"
+            :loading="draftUploading"
+            :disabled="!draftForm.accountId"
+            @click="onDraftUploadImages"
+          >
+            + 添加图片
+          </a-button>
+        </div>
+        <p class="draft-hint">第一张为封面。需先选账号才能上传。</p>
+      </a-form-item>
+      <a-form-item label="描述">
+        <a-textarea
+          v-model:value="draftForm.description"
+          :rows="4"
+          :maxlength="500"
+          show-count
+          placeholder="商品描述（可选）"
+        />
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <style scoped>
@@ -377,5 +664,84 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+/* 草稿表单图片区 */
+.draft-form :deep(.ant-form-item) {
+  margin-bottom: 14px;
+}
+.draft-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+}
+.draft-img-item,
+.draft-img-add {
+  width: 72px;
+  height: 72px;
+  border-radius: 6px;
+}
+.draft-img-item {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--wm-border, #eee);
+}
+.draft-img-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cover-badge {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  color: #fff;
+  background: rgba(22, 119, 255, 0.85);
+}
+.del-img {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.del-img:hover {
+  background: rgba(245, 34, 45, 0.85);
+}
+.draft-img-add {
+  border: 1px dashed var(--wm-border, #d9d9d9);
+  background: var(--wm-list-hover, #fafafa);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--wm-text-secondary, #666);
+  white-space: normal;
+  line-height: 1.2;
+  font-size: 12px;
+}
+.draft-img-add:hover:not(:disabled) {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+.draft-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--wm-text-secondary, #999);
 }
 </style>

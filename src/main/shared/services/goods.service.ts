@@ -7,7 +7,7 @@ import { CookiesManager } from '../core/cookies.manager.js'
 import { generateSign } from '../utils/crypto.js'
 import { createLogger } from '../core/logger.js'
 import { normalizeImageUrl } from '../core/url.js'
-import type { GoodsItem, GoodsListResult } from '../types/index.js'
+import type { GoodsItem, GoodsListResult, CategoryInfo, GoodsDraftImage } from '../types/index.js'
 
 const logger = createLogger('Svc:Goods')
 
@@ -168,6 +168,102 @@ export async function delistItem(
         return { success: false, error: retMsg }
     } catch (e) {
         logger.error(`[${accountId}] 下架商品异常: ${e}`)
+        return { success: false, error: String(e) }
+    }
+}
+
+/**
+ * AI 识别商品类目（mtop.taobao.idle.kgraph.property.recommend v2.0）
+ * 输入标题 + 已上传图片，返回 catId/catName/channelCatId/tbCatId 映射
+ */
+export async function recommendCategory(
+    accountId: string,
+    title: string,
+    images: GoodsDraftImage[]
+): Promise<{ success: boolean; error?: string; category?: CategoryInfo | null }> {
+    try {
+        const cookiesStr = CookiesManager.getCookies(accountId)
+        if (!cookiesStr) {
+            return { success: false, error: '无法获取 cookies' }
+        }
+        const h5Token = CookiesManager.getH5Token(accountId)
+        if (!h5Token) {
+            return { success: false, error: 'h5Token 为空' }
+        }
+
+        const imageInfos = images.map((img) => ({
+            extraInfo: { isH: 'false', isT: 'false', raw: 'false' },
+            isQrCode: false,
+            url: img.url,
+            heightSize: img.height,
+            widthSize: img.width,
+            major: true,
+            type: 0,
+            status: 'done'
+        }))
+
+        const timestamp = Date.now().toString()
+        const dataVal = JSON.stringify({
+            title,
+            lockCpv: false,
+            multiSKU: false,
+            publishScene: 'mainPublish',
+            scene: 'newPublishChoice',
+            description: title,
+            imageInfos,
+            uniqueCode: '1775905618164677'
+        })
+        const sign = generateSign(timestamp, h5Token, dataVal)
+
+        const params = new URLSearchParams({
+            jsv: '2.7.2',
+            appKey: WS_CONFIG.SIGN_APP_KEY,
+            t: timestamp,
+            sign,
+            v: '2.0',
+            type: 'originaljson',
+            accountSite: 'xianyu',
+            dataType: 'json',
+            timeout: '20000',
+            api: API_METHODS.CATEGORY_RECOMMEND,
+            spm_cnt: 'a21ybx.publish.0.0'
+        })
+
+        const res = await fetch(`${API_ENDPOINTS.CATEGORY_RECOMMEND}?${params}`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://www.goofish.com',
+                'referer': 'https://www.goofish.com/',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'cookie': cookiesStr
+            },
+            body: `data=${encodeURIComponent(dataVal)}`
+        })
+        CookiesManager.handleResponseCookies(accountId, res)
+        const resJson = await res.json()
+
+        if (!resJson?.ret?.some((r: string) => r.includes('SUCCESS'))) {
+            const retMsg = resJson?.ret?.join(', ') || '未知错误'
+            logger.warn(`[${accountId}] 类目识别失败: ${retMsg}`)
+            return { success: false, error: retMsg }
+        }
+
+        const predict = resJson?.data?.categoryPredictResult || {}
+        if (!predict.catId) {
+            return { success: false, error: '未识别到类目' }
+        }
+        const category: CategoryInfo = {
+            catId: String(predict.catId || ''),
+            catName: predict.catName || '',
+            channelCatId: String(predict.channelCatId || ''),
+            tbCatId: String(predict.tbCatId || '')
+        }
+        logger.info(`[${accountId}] 类目识别成功: ${category.catName}(${category.catId})`)
+        return { success: true, category }
+    } catch (e) {
+        logger.error(`[${accountId}] 类目识别异常: ${e}`)
         return { success: false, error: String(e) }
     }
 }

@@ -341,6 +341,30 @@ function createWorkflowTables() {
   }
 }
 
+// 创建商品草稿表（category_id INTEGER 存 SpBizType 数字 ID）
+function createGoodsDraftTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goods_drafts (
+      id TEXT PRIMARY KEY,
+      account_id TEXT,
+      title TEXT NOT NULL,
+      price TEXT NOT NULL,
+      original_price TEXT,
+      pic_url TEXT,
+      pic_width INTEGER DEFAULT 0,
+      pic_height INTEGER DEFAULT 0,
+      images TEXT DEFAULT '[]',
+      category_id INTEGER DEFAULT 0,
+      description TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+  // 兼容早期 schema（category TEXT → category_id INTEGER）：补列，旧列无害可忽略
+  safeAddColumn('goods_drafts', 'category_id', 'INTEGER DEFAULT 0')
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_goods_drafts_account ON goods_drafts(account_id)`)
+}
+
 export function runMigrations() {
   logger.info('开始数据库迁移...')
 
@@ -353,6 +377,7 @@ export function runMigrations() {
   createSettingsTables()
   createAutoSellTables()
   createWorkflowTables()
+  createGoodsDraftTables()
 
   logger.info('数据库迁移完成')
 }

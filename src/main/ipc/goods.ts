@@ -1,9 +1,10 @@
-import { ipcMain, session } from 'electron'
-import { getAllAccounts, getAccount } from '../shared/db/index.js'
-import { fetchGoodsList, delistItem } from '../shared/services/index.js'
+import { ipcMain, session, dialog } from 'electron'
+import { getAllAccounts, getAccount, getDrafts, getDraft, createDraft, updateDraft, deleteDraft } from '../shared/db/index.js'
+import { fetchGoodsList, delistItem, uploadImage, recommendCategory } from '../shared/services/index.js'
 import { CookiesManager } from '../shared/core/cookies.manager.js'
 import { parseCookies } from '../shared/utils/cookies.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
+import type { CreateGoodsDraftParams, UpdateGoodsDraftParams, GoodsDraftImage, CategoryInfo } from '../shared/types/index.js'
 
 export function registerGoodsIPC(cm: ClientManager) {
     ipcMain.handle('goods:delist', async (_e, { accountId, itemId }: { accountId: string; itemId: string }) => {
@@ -90,5 +91,56 @@ export function registerGoodsIPC(cm: ClientManager) {
             }
         }
         return { success: true }
+    })
+
+    // ========== 商品草稿（本地，未发布） ==========
+    ipcMain.handle('goods:createDraft', (_e, { params }: { params: CreateGoodsDraftParams }) => {
+        try {
+            return createDraft(params)
+        } catch (e: any) {
+            console.error('[goods:createDraft] error:', e)
+            throw e
+        }
+    })
+    ipcMain.handle('goods:listDrafts', (_e, { accountId }: { accountId?: string }) => {
+        return getDrafts(accountId)
+    })
+    ipcMain.handle('goods:getDraft', (_e, { id }: { id: string }) => {
+        return getDraft(id)
+    })
+    ipcMain.handle('goods:updateDraft', (_e, { params }: { params: UpdateGoodsDraftParams }) => {
+        return { success: updateDraft(params.id, params) }
+    })
+    ipcMain.handle('goods:deleteDraft', (_e, { id }: { id: string }) => {
+        return { success: deleteDraft(id) }
+    })
+
+    // AI 识别类目：标题 + 已上传图片 → catId/catName 映射
+    ipcMain.handle('goods:recommendCategory', async (_e, { accountId, title, images }: { accountId: string; title: string; images: GoodsDraftImage[] }) => {
+        if (!accountId) return { success: false, error: 'Missing accountId' }
+        if (!title) return { success: false, error: '请先填写标题' }
+        return recommendCategory(accountId, title, images)
+    })
+
+    // 草稿图片上传：弹文件选择框 → 逐张上传闲鱼 CDN → 返回 url+尺寸
+    // 复用 media.service 的 uploadImage，与 message:sendImage 同源
+    ipcMain.handle('goods:uploadImages', async (_e, { accountId }: { accountId: string }) => {
+        if (!accountId) return { success: false, error: 'Missing accountId' }
+        const account = getAccount(accountId)
+        if (!account) return { success: false, error: 'Account not found' }
+        const result = await dialog.showOpenDialog({
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+        })
+        if (result.canceled || result.filePaths.length === 0) {
+            return { success: true, images: [] }
+        }
+        const images: GoodsDraftImage[] = []
+        for (const p of result.filePaths) {
+            const up = await uploadImage(accountId, p)
+            if (up) images.push({ url: up.url, width: up.width, height: up.height })
+        }
+        if (images.length === 0) return { success: false, error: '图片上传失败' }
+        return { success: true, images }
     })
 }

@@ -1,5 +1,5 @@
 import { invoke } from '@/core/utils/ipc'
-import type { GoodsListResponse } from '@/core/types'
+import type { GoodsListResponse, GoodsDraft, GoodsDraftImage, CategoryInfo, CreateGoodsDraftParams, UpdateGoodsDraftParams } from '@/core/types'
 
 export const goodsService = {
   getGoods(accountId?: string, page = 1) {
@@ -13,5 +13,23 @@ export const goodsService = {
   },
   delistGoods(accountId: string, itemId: string) {
     return invoke<{ success: boolean; error?: string }>('goods:delist', { accountId, itemId })
+  },
+  createDraft(params: CreateGoodsDraftParams) {
+    return invoke<GoodsDraft>('goods:createDraft', { params })
+  },
+  getDrafts(accountId?: string) {
+    return invoke<GoodsDraft[]>('goods:listDrafts', { accountId })
+  },
+  updateDraft(params: UpdateGoodsDraftParams) {
+    return invoke<{ success: boolean }>('goods:updateDraft', { params })
+  },
+  deleteDraft(id: string) {
+    return invoke<{ success: boolean }>('goods:deleteDraft', { id })
+  },
+  uploadImages(accountId: string) {
+    return invoke<{ success: boolean; error?: string; images: GoodsDraftImage[] }>('goods:uploadImages', { accountId })
+  },
+  recommendCategory(accountId: string, title: string, images: GoodsDraftImage[]) {
+    return invoke<{ success: boolean; error?: string; category?: CategoryInfo | null }>('goods:recommendCategory', { accountId, title, images })
   }
 }
