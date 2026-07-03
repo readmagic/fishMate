@@ -14,6 +14,7 @@ export {
     getAllConversations,
     getConversationDetail,
     markAsRead,
+    markOutgoingRead,
     deleteConversation,
     setConversationHidden
 } from './conversation.service.js'

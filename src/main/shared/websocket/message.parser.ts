@@ -39,25 +39,14 @@ export function isOrderStatusMessage(content: string): boolean {
     return ORDER_STATUS_MESSAGES.some(msg => content.includes(msg))
 }
 
-export function decryptSyncData(data: string): any | null {
-    // 先尝试 MessagePack 解码（这是主要格式）
+// 解码 sync 负载（msgpack 优先，回退 base64+JSON），返回原始对象
+export function decodeSyncPayload(data: string): any | null {
     try {
         const result = decryptMessagePack(data)
-        if (result && typeof result === 'object') {
-            // 检查是否是有效的聊天消息结构
-            const msg1 = result['1'] || result[1]
-            if (msg1 && typeof msg1 === 'object') {
-                const msg10 = msg1['10'] || msg1[10]
-                if (msg10 && typeof msg10 === 'object' && 'reminderContent' in msg10) {
-                    return result
-                }
-            }
-        }
-    } catch (e) {
-        logger.debug(`MessagePack解密失败: ${e}`)
+        if (result && typeof result === 'object') return result
+    } catch {
+        // 落到 base64+JSON 回退
     }
-
-    // 尝试 base64 + JSON
     try {
         const decoded = Buffer.from(data, 'base64').toString('utf-8')
         const parsed = JSON.parse(decoded)
@@ -68,8 +57,42 @@ export function decryptSyncData(data: string): any | null {
     } catch {
         // 忽略 JSON 解析失败
     }
-
     return null
+}
+
+export function decryptSyncData(data: string): any | null {
+    const result = decodeSyncPayload(data)
+    if (!result || typeof result !== 'object') return null
+    const msg1 = result['1'] || result[1]
+    if (msg1 && typeof msg1 === 'object') {
+        const msg10 = msg1['10'] || msg1[10]
+        if (msg10 && typeof msg10 === 'object' && 'reminderContent' in msg10) {
+            return result
+        }
+    }
+    return null
+}
+
+// 已读回执结构：{1:"xxx.PNM", 2:chatId, 4:原消息发送者, 5:阅读时间, 7:原消息createTime, 8:{...}}
+// field4 是被读消息的"发送者"；当发送者 === 自己时，表示对方已读我方消息
+export interface ReadReceipt {
+    chatId: string
+    senderId: string
+    msgTime: number
+}
+
+export function extractReadReceipt(message: any): ReadReceipt | null {
+    if (!message || typeof message !== 'object') return null
+    const pnm = message['1'] || message[1]
+    if (typeof pnm !== 'string' || !pnm.endsWith('.PNM')) return null
+
+    const chatIdRaw = String(message['2'] || message[2] || '')
+    const chatId = chatIdRaw.includes('@') ? chatIdRaw.split('@')[0] : chatIdRaw
+    const senderRaw = String(message['4'] || message[4] || '')
+    const senderId = senderRaw.includes('@') ? senderRaw.split('@')[0] : senderRaw
+    const msgTime = Number(message['7'] || message[7] || 0)
+    if (!chatId || !senderId || !msgTime) return null
+    return { chatId, senderId, msgTime }
 }
 
 export function extractChatMessage(message: any, myId: string): ChatMessage | null {
@@ -206,9 +229,10 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             : new Date().toLocaleString('zh-CN', { hour12: false })
 
         // 解析结构化消息体（msg1.6.3），回填 contentType / extra
-        // payload 判别以字段为准：image→图片(2)，itemCard→卡片(3)，audio→语音(4)
+        // payload 判别以字段为准：image→图片(2)，itemCard→卡片(3)，audio→语音(4)，
+        // locationCard→定位(5)，file→文件(6)
         // 注意：payload 自身的 contentType 数字与本项目的 contentType 语义不一致
-        // （卡片 payload.contentType=7，语音 payload.contentType=3），不可作为判别依据
+        // （卡片 payload.contentType=7，语音 payload.contentType=3，定位=30，文件=33），不可作为判别依据
         let contentType: number | undefined
         let extra: Record<string, unknown> | undefined
         try {
@@ -232,6 +256,16 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
                     // 语音（AMR）：渲染端用 BenzAMRRecorder 解码播放
                     contentType = 4
                     extra = { url: payload.audio.url, duration: payload.audio.duration }
+                } else if (payload?.locationCard) {
+                    // 定位：content=地址，action.page.url=地图页(含经纬度/标题)
+                    contentType = 5
+                    const lc = payload.locationCard
+                    extra = { address: lc.content || '', url: lc.action?.page?.url || '' }
+                } else if (payload?.file) {
+                    // 文件：displayName=文件名，fileSize=字节，fileType=扩展名
+                    contentType = 6
+                    const f = payload.file
+                    extra = { fileName: f.displayName || '', fileSize: f.fileSize || 0, fileType: f.fileType || '' }
                 }
             }
         } catch {
@@ -243,6 +277,8 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             content = contentType === 2 ? '[图片]'
                 : contentType === 3 ? ((extra?.title as string) || '[链接]')
                 : contentType === 4 ? '[语音]'
+                : contentType === 5 ? ((extra?.address as string) || '[定位]')
+                : contentType === 6 ? ((extra?.fileName as string) || '[文件]')
                 : content
         }
 

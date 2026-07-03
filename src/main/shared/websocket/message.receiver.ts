@@ -1,6 +1,6 @@
 import { createLogger } from '../core/logger.js'
-import { decryptSyncData, extractChatMessage, isOrderStatusMessage } from './message.parser.js'
-import { checkAutoReply, handleUserReply } from '../services/index.js'
+import { decodeSyncPayload, extractChatMessage, extractReadReceipt, isOrderStatusMessage } from './message.parser.js'
+import { checkAutoReply, handleUserReply, markOutgoingRead } from '../services/index.js'
 import { addRawMessage } from '../core/raw-message.buffer.js'
 import type { ChatMessage, MessageCallback } from '../types/index.js'
 import type { GoofishClient } from './client.js'
@@ -50,13 +50,23 @@ export async function handleSyncMessage(msgData: any, ctx: MessageReceiverContex
 
         logger.debug(`[${accountId}] 尝试解密数据: ${typeof data === 'string' ? data.substring(0, 50) + '...' : JSON.stringify(data).substring(0, 50) + '...'}`)
 
-        const message = decryptSyncData(data)
-        if (!message) {
+        const decoded = decodeSyncPayload(data)
+        if (!decoded) {
             logger.debug(`[${accountId}] 解密失败或非聊天消息`)
             continue
         }
 
-        const chatMsg = extractChatMessage(message, myId)
+        // 已读回执：field1 为 "xxx.PNM" 字符串。field4=被读消息发送者；==self 表示对方已读我方消息
+        const receipt = extractReadReceipt(decoded)
+        if (receipt) {
+            if (receipt.senderId === myId) {
+                markOutgoingRead(accountId, receipt.chatId, receipt.msgTime)
+                logger.info(`[${accountId}] 已读回执: 对方已读会话 ${receipt.chatId} 内 createTime<=${receipt.msgTime} 的发出消息`)
+            }
+            continue
+        }
+
+        const chatMsg = extractChatMessage(decoded, myId)
         if (!chatMsg) {
             logger.debug(`[${accountId}] 提取聊天消息失败`)
             continue

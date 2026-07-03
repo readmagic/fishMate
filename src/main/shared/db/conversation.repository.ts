@@ -123,6 +123,28 @@ export function getTotalConversationMessageCount(): number {
     return row.count
 }
 
+// 按 msg_id 判断消息是否已入库（同一消息可能被 sync/push 双投递，去重用）
+export function conversationMessageExistsByMsgId(accountId: string, chatId: string, msgId: string): boolean {
+    const stmt = db.prepare(`
+        SELECT 1 FROM conversation_messages
+        WHERE account_id = ? AND chat_id = ? AND msg_id = ? LIMIT 1
+    `)
+    return !!stmt.get(accountId, chatId, msgId)
+}
+
+// 标记我方发出消息为已读（对方已读回执到达时调用）
+// upToTime = 被读消息的 createTime(服务端 epoch ms)，把同会话内 created_at<=upToTime 的发出消息置为已读
+// +3s 容差吸收本地 Date.now() 与服务端 createTime 的钟差/处理延迟
+export function markOutgoingReadUpTo(accountId: string, chatId: string, upToTime: number): number {
+    const stmt = db.prepare(`
+        UPDATE conversation_messages SET read_status = 1
+        WHERE account_id = ? AND chat_id = ? AND direction = 'out'
+          AND read_status = 0 AND created_at <= ?
+    `)
+    const r = stmt.run(accountId, chatId, upToTime + 3000)
+    return r.changes
+}
+
 // 添加消息
 export function addConversationMessage(msg: AddConversationMessageParams, emitNew = true): number {
     const stmt = db.prepare(`

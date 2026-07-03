@@ -45,7 +45,9 @@ export {
     getConversationMessages,
     getConversationMessageCount,
     getTotalConversationMessageCount,
-    addConversationMessage
+    addConversationMessage,
+    conversationMessageExistsByMsgId,
+    markOutgoingReadUpTo
 } from './conversation.repository.js'
 
 export {

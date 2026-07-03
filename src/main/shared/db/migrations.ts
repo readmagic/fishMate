@@ -107,6 +107,8 @@ function createConversationTables() {
   // 消息类型 1=文本 2=图片 3=宝贝卡片；extra=JSON(图片url+尺寸/卡片itemId+标题+图+价)
   safeAddColumn('conversation_messages', 'content_type', 'INTEGER DEFAULT 1')
   safeAddColumn('conversation_messages', 'extra', 'TEXT')
+  // 已读状态：0=未读 1=已读（仅对 direction='out' 有意义，由对方已读回执置 1）
+  safeAddColumn('conversation_messages', 'read_status', 'INTEGER DEFAULT 0')
 
   // 创建索引
   db.exec(`CREATE INDEX IF NOT EXISTS idx_conv_msg_account_chat 

@@ -48,6 +48,7 @@ export interface DbConversationMessage {
     created_at: number
     content_type: number
     extra: string | null
+    read_status: number
 }
 
 // 创建/更新对话参数

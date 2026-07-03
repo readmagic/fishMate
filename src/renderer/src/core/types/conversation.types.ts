@@ -13,6 +13,8 @@ export interface ConversationMessage {
     direction: 'in' | 'out';
     contentType: number;
     extra?: Record<string, unknown>;
+    // 已读状态：0=未读 1=已读（仅 direction='out' 有意义）
+    readStatus?: number;
 }
 
 export interface Conversation {

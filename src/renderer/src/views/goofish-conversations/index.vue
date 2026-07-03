@@ -7,10 +7,12 @@ import {
   SmileOutlined,
   PictureOutlined,
   ScissorOutlined,
-  SoundOutlined
+  SoundOutlined,
+  EnvironmentOutlined,
+  FileTextOutlined
 } from '@ant-design/icons-vue'
 import BenzAMRRecorder from 'benz-amr-recorder'
-import { conversationService } from '@/core/services'
+import { conversationService, goodsService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
 import { useGoodsStore } from '@/core/stores/useGoodsStore'
 import { STICKERS } from '@/core/data/stickers'
@@ -321,8 +323,75 @@ async function send() {
 // ============ 富消息发送 ============
 const stickerVisible = ref(false)
 const previewUrl = ref('')
+// 宝贝详情/定位地图 webview 预览：点遮罩或 Esc 关闭
+const webviewUrl = ref('')
+const webviewTitle = ref('')
+const wvRef = ref<any>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const loadingAction = ref<'image' | 'screen' | null>(null)
+
+// 反检测脚本：伪造 navigator 全套属性 + window.chrome + WebGL 指纹，规避闲鱼滑动验证
+// （从 goofish-goods 详情 webview 同步，保持商品页登录态加载一致）
+const STEALTH_JS = `(() => {
+  try {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined, configurable: true });
+    Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN','zh','en'], configurable: true });
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => {
+        const a = [
+          { name:'PDF Viewer', filename:'internal-pdf-viewer', description:'Portable Document Format' },
+          { name:'Chrome PDF Viewer', filename:'internal-pdf-viewer', description:'' },
+          { name:'Chromium PDF Viewer', filename:'internal-pdf-viewer', description:'' },
+          { name:'Microsoft Edge PDF Viewer', filename:'internal-pdf-viewer', description:'' },
+          { name:'WebKit built-in PDF', filename:'internal-pdf-viewer', description:'' }
+        ];
+        a.item = (i) => a[i] || null;
+        a.namedItem = (n) => a.find(p => p.name === n) || null;
+        a.refresh = () => {};
+        return a;
+      },
+      configurable: true
+    });
+    window.chrome = window.chrome || {};
+    if (!window.chrome.runtime) window.chrome.runtime = {};
+    if (!window.chrome.app) window.chrome.app = { isInstalled:false, getDetails:()=>null, getIsInstalled:()=>false };
+    if (!window.chrome.csi) window.chrome.csi = () => ({});
+    if (!window.chrome.loadTimes) window.chrome.loadTimes = () => ({});
+    const GP = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(p){
+      if (p === 37445) return 'Intel Inc.';
+      if (p === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
+      return GP.call(this, p);
+    };
+    if (window.WebGL2RenderingContext) {
+      const GP2 = WebGL2RenderingContext.prototype.getParameter;
+      WebGL2RenderingContext.prototype.getParameter = function(p){
+        if (p === 37445) return 'Intel Inc.';
+        if (p === 37446) return 'Intel(R) Iris(TM) Plus Graphics 640';
+        return GP2.call(this, p);
+      };
+    }
+    if (window.navigator.permissions) {
+      const oq = window.navigator.permissions.query.bind(window.navigator.permissions);
+      window.navigator.permissions.query = (params) =>
+        params && params.name === 'notifications'
+          ? Promise.resolve({ state: Notification.permission, onchange: null })
+          : oq(params);
+    }
+  } catch (e) {}
+})();`
+const CLEANUP_JS = `(() => {
+  const SEL = '[class*="surveyWrap"], [class*="sidebar-container"]';
+  const sweep = () => document.querySelectorAll(SEL).forEach(el => el.remove());
+  sweep();
+  try {
+    const mo = new MutationObserver(() => sweep());
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+})();`
+function onWebviewDomReady() {
+  try { wvRef.value?.executeJavaScript(`${STEALTH_JS}\n${CLEANUP_JS}`, true) } catch { /* ignore */ }
+}
 
 function nowTs() {
   const n = new Date()
@@ -535,6 +604,39 @@ watch(previewUrl, (v) => {
   if (v) window.addEventListener('keydown', onPreviewEsc)
   else window.removeEventListener('keydown', onPreviewEsc)
 })
+
+// webview 预览（宝贝详情/定位地图）期间监听 Esc 关闭
+function onWebviewEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') { webviewUrl.value = ''; webviewTitle.value = '' }
+}
+watch(webviewUrl, (v) => {
+  if (v) window.addEventListener('keydown', onWebviewEsc)
+  else window.removeEventListener('keydown', onWebviewEsc)
+})
+
+// 打开宝贝详情 webview：先注入当前账号 cookie 到 persist:goofish session，再加载
+async function openItemDetail(itemId: any) {
+  if (!itemId) return
+  const accountId = selected.value?.accountId
+  if (accountId) {
+    try { await goodsService.injectCookies(accountId) } catch { /* ignore */ }
+  }
+  webviewTitle.value = '宝贝详情'
+  webviewUrl.value = `https://www.goofish.com/item?id=${itemId}`
+}
+// 打开定位地图 webview（地图页无需 goofish 登录态）
+function openLocationMap(url: any) {
+  if (!url) return
+  webviewTitle.value = '位置'
+  webviewUrl.value = String(url)
+}
+// 文件大小格式化
+function formatFileSize(bytes: any): string {
+  const n = Number(bytes) || 0
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
 </script>
 
 <template>
@@ -667,17 +769,40 @@ watch(previewUrl, (v) => {
                   />
                   <span v-else>{{ item.msg.content || '[图片]' }}</span>
                 </div>
-                <!-- 宝贝卡片 -->
+                <!-- 宝贝卡片：点击打开详情 webview -->
                 <div
                   v-else-if="item.msg.contentType === 3"
                   class="msg-bubble bubble-card"
                   :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                  @click="openItemDetail((item.msg.extra as any)?.itemId)"
                 >
                   <img v-if="(item.msg.extra as any)?.picUrl" :src="(item.msg.extra as any).picUrl" class="card-pic" />
                   <div v-else class="card-pic card-pic-empty" />
                   <div class="card-meta">
                     <div class="card-title">{{ (item.msg.extra as any)?.title || item.msg.content }}</div>
                     <div class="card-price">¥{{ (item.msg.extra as any)?.price || '-' }}</div>
+                  </div>
+                </div>
+                <!-- 定位卡片：点击打开地图 webview -->
+                <div
+                  v-else-if="item.msg.contentType === 5"
+                  class="msg-bubble bubble-loc"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                  @click="openLocationMap((item.msg.extra as any)?.url)"
+                >
+                  <EnvironmentOutlined class="loc-icon" />
+                  <span class="loc-text">{{ (item.msg.extra as any)?.address || item.msg.content || '[定位]' }}</span>
+                </div>
+                <!-- 文件卡片 -->
+                <div
+                  v-else-if="item.msg.contentType === 6"
+                  class="msg-bubble bubble-file"
+                  :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
+                >
+                  <FileTextOutlined class="file-icon" />
+                  <div class="file-meta">
+                    <div class="file-name">{{ (item.msg.extra as any)?.fileName || item.msg.content || '[文件]' }}</div>
+                    <div v-if="(item.msg.extra as any)?.fileSize" class="file-size">{{ formatFileSize((item.msg.extra as any).fileSize) }}</div>
                   </div>
                 </div>
                 <!-- 语音 -->
@@ -698,8 +823,8 @@ watch(previewUrl, (v) => {
                   :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
                 >{{ item.msg.content }}</div>
 
-                <!-- 已读状态（仅自己消息） -->
-                <div v-if="item.msg.direction === 'out'" class="msg-read">已读</div>
+                <!-- 已读状态（仅自己消息）：默认未读，对方看到回执后才置已读 -->
+                <div v-if="item.msg.direction === 'out'" class="msg-read" :class="{ 'msg-unread': !item.msg.readStatus }">{{ item.msg.readStatus ? '已读' : '未读' }}</div>
               </div>
             </div>
           </template>
@@ -762,6 +887,26 @@ watch(previewUrl, (v) => {
   <Teleport to="body">
     <div v-if="previewUrl" class="img-preview-mask" @click="previewUrl = ''">
       <img :src="previewUrl" class="img-preview-full" />
+    </div>
+  </Teleport>
+  <!-- 宝贝详情/定位地图 webview 预览：点遮罩或 Esc 关闭 -->
+  <Teleport to="body">
+    <div v-if="webviewUrl" class="wv-preview-mask" @click.self="webviewUrl = ''">
+      <div class="wv-preview-box">
+        <div class="wv-preview-header">
+          <span class="wv-preview-title">{{ webviewTitle }}</span>
+          <a-button size="small" @click="webviewUrl = ''">X</a-button>
+        </div>
+        <webview
+          ref="wvRef"
+          :src="webviewUrl"
+          :key="webviewUrl"
+          partition="persist:goofish"
+          useragent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0"
+          style="flex: 1; height: 0"
+          @dom-ready="onWebviewDomReady"
+        />
+      </div>
     </div>
   </Teleport>
 </template>
@@ -996,6 +1141,9 @@ watch(previewUrl, (v) => {
   font-size: 10px;
   color: #C0C0C0;
 }
+.msg-read.msg-unread {
+  color: #F5222D;
+}
 /* 文本内联贴纸：v-html 注入的 <img> 无 scoped 属性，须用 :deep() 穿透 */
 :deep(.inline-sticker) {
   width: 20px;
@@ -1047,6 +1195,7 @@ watch(previewUrl, (v) => {
   background: #fff;
   border: 1px solid #ECECEC;
   border-radius: 10px;
+  cursor: pointer;
 }
 .card-pic {
   width: 56px;
@@ -1076,6 +1225,89 @@ watch(previewUrl, (v) => {
 .card-price {
   font-size: 13px;
   color: #f5222d;
+  font-weight: 600;
+}
+/* 定位卡片气泡 */
+.bubble-loc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  max-width: 260px;
+  cursor: pointer;
+  user-select: none;
+}
+.bubble-loc .loc-icon {
+  color: #1E90FF;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.bubble-loc .loc-text {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 文件卡片气泡 */
+.bubble-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  max-width: 260px;
+  user-select: none;
+}
+.bubble-file .file-icon {
+  color: #FA8C16;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.bubble-file .file-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.bubble-file .file-name {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.bubble-file .file-size {
+  font-size: 11px;
+  color: var(--wm-text-secondary, #999);
+}
+/* webview 预览弹层（宝贝详情/定位地图） */
+.wv-preview-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.wv-preview-box {
+  width: 80vw;
+  height: 85vh;
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wv-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--wm-border, #eee);
+  flex-shrink: 0;
+}
+.wv-preview-title {
+  font-size: 14px;
   font-weight: 600;
 }
 /* 语音气泡 */

@@ -15,10 +15,13 @@ import {
     getConversationMessages,
     getConversationMessageCount,
     addConversationMessage,
+    conversationMessageExistsByMsgId,
+    markOutgoingReadUpTo,
     getConversationCount,
     getAccount
 } from '../db/index.js'
 import { normalizeImageUrl } from '../core/url.js'
+import { emitConversationsUpdated } from '../core/event-emitter.js'
 import type {
     ChatMessage,
     Conversation,
@@ -44,6 +47,9 @@ function safeParseExtra(raw: string): Record<string, unknown> | undefined {
  * 添加收到的消息
  */
 export function addIncomingMessage(accountId: string, msg: ChatMessage) {
+    // 同一消息可能被 sync/push 双投递，按 msg_id 去重：已入库则整体跳过（不插行、不累加未读）
+    if (msg.msgId && conversationMessageExistsByMsgId(accountId, msg.chatId, msg.msgId)) return
+
     const timestamp = Date.now()
 
     // 先更新对话，不触发事件
@@ -124,6 +130,9 @@ export function addOutgoingMessage(
 export function addRemoteOutgoingMessage(accountId: string, msg: ChatMessage) {
     const existing = getConversation(accountId, msg.chatId)
     if (!existing) return // 会话不存在（对方未发起过对话），暂不创建，等对方消息来再建
+
+    // 与 addIncomingMessage 一致的 msg_id 去重，避免其它端发出消息被双投递时重复入库
+    if (msg.msgId && conversationMessageExistsByMsgId(accountId, msg.chatId, msg.msgId)) return
 
     const timestamp = Date.now()
     upsertConversation({
@@ -214,7 +223,8 @@ export function getConversationDetail(
         timestamp: m.created_at,
         direction: m.direction,
         contentType: m.content_type ?? 1,
-        extra: m.extra ? safeParseExtra(m.extra) : undefined
+        extra: m.extra ? safeParseExtra(m.extra) : undefined,
+        readStatus: m.read_status ?? 0
     }))
 
     return {
@@ -238,6 +248,16 @@ export function getConversationDetail(
  */
 export function markAsRead(accountId: string, chatId: string) {
     markConversationRead(accountId, chatId)
+}
+
+/**
+ * 标记我方发出消息为已读（对方已读回执到达）
+ * upToTime = 被读消息的服务端 createTime(epoch ms)
+ * 触发会话刷新事件，前端打开中的会话会重新拉取详情、实时刷新已读状态
+ */
+export function markOutgoingRead(accountId: string, chatId: string, upToTime: number) {
+    const changed = markOutgoingReadUpTo(accountId, chatId, upToTime)
+    if (changed > 0) emitConversationsUpdated()
 }
 
 /**
