@@ -30,7 +30,7 @@ export {
 } from './message.service.js'
 
 // 商品服务
-export { fetchGoodsList, delistItem, recommendCategory } from './goods.service.js'
+export { fetchGoodsList, delistItem, publishItem, recommendCategory } from './goods.service.js'
 
 // 用户服务
 export {

@@ -1,6 +1,6 @@
 import { ipcMain, session, dialog } from 'electron'
 import { getAllAccounts, getAccount, getDrafts, getDraft, createDraft, updateDraft, deleteDraft } from '../shared/db/index.js'
-import { fetchGoodsList, delistItem, uploadImage, recommendCategory } from '../shared/services/index.js'
+import { fetchGoodsList, delistItem, publishItem, uploadImage, recommendCategory } from '../shared/services/index.js'
 import { CookiesManager } from '../shared/core/cookies.manager.js'
 import { parseCookies } from '../shared/utils/cookies.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
@@ -12,6 +12,22 @@ export function registerGoodsIPC(cm: ClientManager) {
         const account = getAccount(accountId)
         if (!account) return { success: false, error: 'Account not found' }
         return delistItem(accountId, itemId)
+    })
+    ipcMain.handle('goods:publish', async (_e, { draftId }: { draftId: string }) => {
+        const draft = getDraft(draftId)
+        if (!draft) return { success: false, error: '草稿不存在' }
+        if (!draft.accountId) return { success: false, error: '草稿未绑定账号' }
+        const account = getAccount(draft.accountId)
+        if (!account) return { success: false, error: '账号不存在' }
+        const images: GoodsDraftImage[] = typeof draft.images === 'string' ? JSON.parse(draft.images) : (draft.images || [])
+        if (images.length === 0) return { success: false, error: '至少需要一张图片' }
+        const result = await publishItem(draft.accountId, {
+            title: draft.title, desc: draft.description || '', images,
+            price: draft.price, originalPrice: draft.originalPrice || undefined,
+            categoryId: draft.categoryId || 0
+        })
+        if (result.success) deleteDraft(draftId)
+        return result
     })
     ipcMain.handle('goods:list', async (_e, { accountId, page = 1 }: { accountId?: string; page?: number }) => {
         if (accountId) {

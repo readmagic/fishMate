@@ -53,6 +53,9 @@ export function addIncomingMessage(accountId: string, msg: ChatMessage) {
 
     const timestamp = Date.now()
 
+    // 对方发来消息说明正在看对话，我方发出的消息视为已读
+    markOutgoingReadUpTo(accountId, msg.chatId, timestamp)
+
     // 先更新对话，不触发事件
     upsertConversation({
         accountId,

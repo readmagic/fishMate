@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'

@@ -154,6 +154,19 @@ watch(
     hasMore.value = data.length < pushStore.conversationsTotal
 
     if (selected.value) {
+      // 当前打开的会话仍有未读 → 通知后端清零，避免 badge 残留
+      const live = data.find(
+        (c) => c.accountId === selected.value!.accountId && c.chatId === selected.value!.chatId
+      )
+      if (live && live.unread > 0) {
+        await conversationService.markAsRead(live.accountId, live.chatId)
+        live.unread = 0
+        const li = conversations.value.find(
+          (c) => c.accountId === live.accountId && c.chatId === live.chatId
+        )
+        if (li) li.unread = 0
+      }
+
       try {
         const detail = await conversationService.getConversation(selected.value.accountId, selected.value.chatId, 50)
         selected.value = detail
@@ -648,11 +661,20 @@ async function openItemDetail(itemId: any) {
   webviewTitle.value = '宝贝详情'
   webviewUrl.value = `https://www.goofish.com/item?id=${itemId}`
 }
-// 打开定位地图 webview（地图页无需 goofish 登录态）
-function openLocationMap(url: any) {
-  if (!url) return
-  webviewTitle.value = '位置'
-  webviewUrl.value = String(url)
+// 打开定位地图：用高德静态地图展示位置
+function openLocationMap(msg: ConversationMessage) {
+  const extra = msg.extra as any
+  let lng = extra?.longitude
+  let lat = extra?.latitude
+  // 兼容旧消息：从闲鱼地图 URL 中提取经纬度
+  if ((!lng || !lat) && extra?.url) {
+    const m = String(extra.url).match(/longitude=([\d.]+).*?latitude=([\d.]+)/)
+    if (m) { lng = m[1]; lat = m[2] }
+  }
+  if (!lng || !lat) { message.warning('位置信息不完整'); return }
+  const name = extra?.title || extra?.address || '位置'
+  webviewTitle.value = name
+  webviewUrl.value = `https://uri.amap.com/marker?position=${lng},${lat}&name=${encodeURIComponent(name)}`
 }
 // 文件大小格式化
 function formatFileSize(bytes: any): string {
@@ -815,10 +837,13 @@ function formatFileSize(bytes: any): string {
                   v-else-if="item.msg.contentType === 5"
                   class="msg-bubble bubble-loc"
                   :class="item.msg.direction === 'out' ? 'bubble-out' : 'bubble-in'"
-                  @click="openLocationMap((item.msg.extra as any)?.url)"
+                  @click="openLocationMap(item.msg)"
                 >
                   <EnvironmentOutlined class="loc-icon" />
-                  <span class="loc-text">{{ (item.msg.extra as any)?.address || item.msg.content || '[定位]' }}</span>
+                  <div class="loc-info">
+                    <span class="loc-title">{{ (item.msg.extra as any)?.title || '[位置]' }}</span>
+                    <span v-if="(item.msg.extra as any)?.address" class="loc-addr">{{ (item.msg.extra as any)?.address }}</span>
+                  </div>
                 </div>
                 <!-- 文件卡片 -->
                 <div
@@ -830,6 +855,7 @@ function formatFileSize(bytes: any): string {
                   <div class="file-meta">
                     <div class="file-name">{{ (item.msg.extra as any)?.fileName || item.msg.content || '[文件]' }}</div>
                     <div v-if="(item.msg.extra as any)?.fileSize" class="file-size">{{ formatFileSize((item.msg.extra as any).fileSize) }}</div>
+                    <div class="file-tip">请在手机端查看</div>
                   </div>
                 </div>
                 <!-- 语音 -->
@@ -1262,7 +1288,7 @@ function formatFileSize(bytes: any): string {
 /* 定位卡片气泡 */
 .bubble-loc {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   padding: 8px 12px;
   max-width: 260px;
@@ -1273,9 +1299,25 @@ function formatFileSize(bytes: any): string {
   color: #1E90FF;
   font-size: 16px;
   flex-shrink: 0;
+  margin-top: 2px;
 }
-.bubble-loc .loc-text {
+.bubble-loc .loc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.bubble-loc .loc-title {
   font-size: 13px;
+  font-weight: 500;
+  color: var(--wm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bubble-loc .loc-addr {
+  font-size: 11px;
+  color: var(--wm-text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1310,6 +1352,10 @@ function formatFileSize(bytes: any): string {
 .bubble-file .file-size {
   font-size: 11px;
   color: var(--wm-text-secondary, #999);
+}
+.bubble-file .file-tip {
+  font-size: 11px;
+  color: #fa8c16;
 }
 /* webview 预览弹层（宝贝详情/定位地图） */
 .wv-preview-mask {

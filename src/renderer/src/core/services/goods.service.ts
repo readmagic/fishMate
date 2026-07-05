@@ -14,6 +14,9 @@ export const goodsService = {
   delistGoods(accountId: string, itemId: string) {
     return invoke<{ success: boolean; error?: string }>('goods:delist', { accountId, itemId })
   },
+  publishDraft(draftId: string) {
+    return invoke<{ success: boolean; itemId?: string; error?: string }>('goods:publish', { draftId })
+  },
   createDraft(params: CreateGoodsDraftParams) {
     return invoke<GoodsDraft>('goods:createDraft', { params })
   },

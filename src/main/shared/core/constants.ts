@@ -29,6 +29,8 @@ export const API_METHODS = {
     CONFIRM_SHIPMENT: 'mtop.taobao.idle.logistic.consign.dummy',
     FREE_SHIPPING: 'mtop.idle.groupon.activity.seller.freeshipping',
     ITEM_DELETE: 'com.taobao.idle.item.delete',
+    ITEM_PUBLISH: 'mtop.idle.pc.idleitem.publish',
+    LOCATION_GET: 'mtop.taobao.idle.local.poi.get',
     CATEGORY_RECOMMEND: 'mtop.taobao.idle.kgraph.property.recommend'
 }
 
@@ -54,6 +56,10 @@ export const API_ENDPOINTS = {
     FREE_SHIPPING: buildApiUrl(API_METHODS.FREE_SHIPPING),
     // 下架接口版本为 1.1
     ITEM_DELETE: buildApiUrl(API_METHODS.ITEM_DELETE, '1.1'),
+    // 发布商品版本为 1.0
+    ITEM_PUBLISH: buildApiUrl(API_METHODS.ITEM_PUBLISH, '1.0'),
+    // 获取默认地址版本为 1.0
+    LOCATION_GET: buildApiUrl(API_METHODS.LOCATION_GET, '1.0'),
     // 类目识别接口版本为 2.0
     CATEGORY_RECOMMEND: buildApiUrl(API_METHODS.CATEGORY_RECOMMEND, '2.0')
 }

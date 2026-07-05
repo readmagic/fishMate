@@ -241,6 +241,10 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
             const payloadStr = msg63?.['5'] || msg63?.[5]
             if (typeof payloadStr === 'string' && payloadStr.trim() !== '') {
                 const payload = JSON.parse(payloadStr)
+                // 临时调试：payload 含 file 字段时打印完整结构
+                if (payload?.file || payload?.contentType === 33) {
+                    logger.info('[DEBUG] 文件消息 payload:', JSON.stringify(payload, null, 2))
+                }
                 if (payload?.image?.pics?.[0]?.url) {
                     const pic = payload.image.pics[0]
                     contentType = 2
@@ -257,15 +261,20 @@ export function extractChatMessage(message: any, myId: string): ChatMessage | nu
                     contentType = 4
                     extra = { url: payload.audio.url, duration: payload.audio.duration }
                 } else if (payload?.locationCard) {
-                    // 定位：content=地址，action.page.url=地图页(含经纬度/标题)
+                    // 定位：content=详细地址，title=位置名，latitude/longitude=经纬度
                     contentType = 5
                     const lc = payload.locationCard
-                    extra = { address: lc.content || '', url: lc.action?.page?.url || '' }
+                    extra = {
+                        address: lc.content || '',
+                        title: lc.title || '',
+                        latitude: lc.latitude || '',
+                        longitude: lc.longitude || ''
+                    }
                 } else if (payload?.file) {
-                    // 文件：displayName=文件名，fileSize=字节，fileType=扩展名
+                    // 文件：fileKey=OSS 对象键（需鉴权下载），displayName=文件名，fileSize=字节，fileType=扩展名
                     contentType = 6
                     const f = payload.file
-                    extra = { fileName: f.displayName || '', fileSize: f.fileSize || 0, fileType: f.fileType || '' }
+                    extra = { fileKey: f.fileKey || '', fileName: f.displayName || '', fileSize: f.fileSize || 0, fileType: f.fileType || '' }
                 }
             }
         } catch {

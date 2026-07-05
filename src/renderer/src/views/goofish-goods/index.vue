@@ -55,6 +55,10 @@ const filteredGoods = computed(() => {
 })
 
 const selectedGoods = computed(() => goods.value.find((g) => g.id === selectedGoodsId.value) || null)
+const selectedDraft = computed(() => {
+  if (!selectedGoodsId.value || !isDraft(selectedGoodsId.value)) return null
+  return drafts.value.find((d) => d.id === selectedGoodsId.value) || null
+})
 
 // 选中商品 → 注入账号 cookie 到 webview session → 加载 goofish 商品页
 // 草稿不走 webview（由行点击直接打开编辑表单）
@@ -193,6 +197,14 @@ function statusText(s: number) {
 function statusColor(s: number) {
   return s === 0 ? 'green' : s === 1 ? 'orange' : s === 2 ? 'blue' : 'default'
 }
+function categoryName(id: number | null | undefined) {
+  if (!id) return '未分类'
+  return CATEGORIES.find((c) => c.id === id)?.name || '未分类'
+}
+function accountName(id: string | undefined) {
+  if (!id) return '未知'
+  return accounts.value.find((a) => a.id === id)?.nickname || id
+}
 
 // ========== 草稿表单 ==========
 interface DraftForm {
@@ -245,7 +257,6 @@ function openDraftEdit(id: string) {
 
 function onRowClick(item: GoodsItem) {
   selectedGoodsId.value = item.id
-  if (isDraft(item.id)) openDraftEdit(item.id)
 }
 
 async function onDraftUploadImages() {
@@ -277,6 +288,7 @@ async function onDraftSubmit() {
   if (!f.accountId) { message.warning('请选择账号'); return }
   if (!f.title.trim()) { message.warning('请输入标题'); return }
   if (f.price == null || f.price < 0) { message.warning('请输入价格'); return }
+  if (f.images.length === 0) { message.warning('请至少上传一张图片'); return }
   draftSaving.value = true
   try {
     const payload = {
@@ -325,11 +337,35 @@ function onDraftDelete(item: GoodsItem) {
   })
 }
 
-// 右键菜单：线上商品=下架，草稿=编辑/删除
+// 右键菜单：草稿=上架/编辑/删除，线上商品=下架
 function onContextClick(key: string, item: GoodsItem) {
-  if (key === 'delist') onDelist(item)
+  if (key === 'publish') onPublish(item)
+  else if (key === 'delist') onDelist(item)
   else if (key === 'edit') openDraftEdit(item.id)
   else if (key === 'delete') onDraftDelete(item)
+}
+
+// 上架草稿：调用闲鱼发布 API
+async function onPublish(item: GoodsItem) {
+  if (!item.accountId) { message.error('未知账号'); return }
+  modal.confirm({
+    title: '上架商品',
+    content: `确定上架「${item.title}」吗？`,
+    onOk: async () => {
+      try {
+        const res = await goodsService.publishDraft(item.id)
+        if (res.success) {
+          message.success(`上架成功${res.itemId ? '，商品ID: ' + res.itemId : ''}`)
+          webviewSrc.value = ''
+          await loadGoods()
+        } else {
+          message.error(res.error || '上架失败')
+        }
+      } catch (e: any) {
+        message.error(`上架失败：${e?.message || e}`)
+      }
+    }
+  })
 }
 
 function onDelist(item: GoodsItem) {
@@ -422,12 +458,13 @@ onMounted(() => {
               <template #overlay>
                 <a-menu @click="({ key }: { key: string }) => onContextClick(key, item)">
                   <template v-if="isDraft(item.id)">
+                    <a-menu-item key="publish">上架</a-menu-item>
                     <a-menu-item key="edit">编辑</a-menu-item>
                     <a-menu-item key="delete" danger>删除</a-menu-item>
                   </template>
-                  <a-menu-item v-else key="delist" :disabled="item.itemStatus === 1" danger>
-                    下架
-                  </a-menu-item>
+                  <template v-else>
+                    <a-menu-item key="delist" :disabled="item.itemStatus === 1" danger>下架</a-menu-item>
+                  </template>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -437,9 +474,8 @@ onMounted(() => {
     </template>
 
     <template #detail>
-      <div v-if="selectedGoods && !isDraft(selectedGoods.id)" class="detail-webview-wrap">
+      <div v-if="selectedGoods && !isDraft(selectedGoods.id) && webviewSrc" class="detail-webview-wrap">
         <webview
-          v-if="webviewSrc"
           ref="wvRef"
           :src="webviewSrc"
           :key="selectedGoods.id"
@@ -448,10 +484,45 @@ onMounted(() => {
           style="height: 100%"
           @dom-ready="onWebviewDomReady"
         />
-        <div v-else class="detail-loading"><a-spin /></div>
       </div>
-      <div v-else-if="selectedGoods && isDraft(selectedGoods.id)" class="detail-empty">
-        <p style="color: var(--wm-text-secondary)">草稿商品 — 右键可编辑或删除</p>
+      <div v-else-if="selectedDraft" class="draft-detail">
+        <div class="draft-detail-header">
+          <a-tag color="blue">草稿</a-tag>
+          <span class="draft-account">{{ accountName(selectedDraft.accountId) }}</span>
+        </div>
+        <div class="draft-detail-images">
+          <div
+            v-for="(img, idx) in selectedDraft.images"
+            :key="img.url"
+            class="draft-detail-img"
+            :class="{ cover: idx === 0 }"
+          >
+            <img :src="img.url" :alt="`图片${idx + 1}`" />
+            <span v-if="idx === 0" class="cover-badge">封面</span>
+          </div>
+          <div v-if="selectedDraft.images.length === 0" class="draft-detail-no-img">
+            暂无图片
+          </div>
+        </div>
+        <div class="draft-detail-info">
+          <h3 class="draft-detail-title">{{ selectedDraft.title }}</h3>
+          <div class="draft-detail-prices">
+            <span class="draft-detail-price">¥{{ selectedDraft.price }}</span>
+            <span v-if="selectedDraft.originalPrice" class="draft-detail-original">
+              ¥{{ selectedDraft.originalPrice }}
+            </span>
+          </div>
+          <div class="draft-detail-rows">
+            <div class="draft-detail-row">
+              <span class="draft-detail-label">类目</span>
+              <span>{{ categoryName(selectedDraft.categoryId) }}</span>
+            </div>
+            <div v-if="selectedDraft.description" class="draft-detail-row">
+              <span class="draft-detail-label">描述</span>
+              <span class="draft-detail-desc">{{ selectedDraft.description }}</span>
+            </div>
+          </div>
+        </div>
       </div>
       <div v-else class="detail-empty">
         <a-empty description="选择一个商品查看详情" />
@@ -743,5 +814,104 @@ onMounted(() => {
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--wm-text-secondary, #999);
+}
+
+/* 草稿详情面板 */
+.draft-detail {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.draft-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.draft-account {
+  font-size: 13px;
+  color: var(--wm-text-secondary);
+}
+.draft-detail-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.draft-detail-img {
+  width: 100px;
+  height: 100px;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--wm-border, #eee);
+}
+.draft-detail-img.cover {
+  width: 160px;
+  height: 160px;
+}
+.draft-detail-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.draft-detail-no-img {
+  width: 100%;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wm-text-secondary);
+  font-size: 13px;
+  border: 1px dashed var(--wm-border, #d9d9d9);
+  border-radius: 6px;
+}
+.draft-detail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.draft-detail-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--wm-text);
+  line-height: 1.5;
+}
+.draft-detail-prices {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.draft-detail-price {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f5222d;
+}
+.draft-detail-original {
+  font-size: 14px;
+  color: var(--wm-text-secondary);
+  text-decoration: line-through;
+}
+.draft-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.draft-detail-row {
+  display: flex;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--wm-text);
+}
+.draft-detail-label {
+  width: 48px;
+  flex-shrink: 0;
+  color: var(--wm-text-secondary);
+}
+.draft-detail-desc {
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>
