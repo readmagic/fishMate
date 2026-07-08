@@ -8,6 +8,7 @@ import { generateSign } from '../utils/crypto.js'
 import { createLogger } from '../core/logger.js'
 import { getUserAvatar, saveUserAvatar, hasUserAvatar } from '../db/index.js'
 import { normalizeImageUrl } from '../core/url.js'
+import { uploadImage } from './media.service.js'
 import type { UserHeadInfo, AccountUserInfo } from '../types/index.js'
 
 const logger = createLogger('Svc:User')
@@ -273,4 +274,75 @@ export async function fetchUserInfo(accountId: string): Promise<AccountUserInfo 
     }
 
     return { userId, ...profile }
+}
+
+/**
+ * 修改账号头像
+ * 流程（移植自闲鱼小程序 _sub-package-other_）：
+ *   1. 上传图片到 stream-upload（appkey=fleamarket）拿 CDN URL
+ *   2. 调 mtop.idle.wx.user.profile.update 提交 {profileCode:"avatar", profileImageUrl:url}
+ * 成功后由调用方调 fetchUserInfo 同步本地缓存
+ */
+export async function updateAccountAvatar(
+    accountId: string,
+    filePath: string
+): Promise<{ success: boolean; avatar?: string; error?: string }> {
+    try {
+        const up = await uploadImage(accountId, filePath, 'fleamarket')
+        if (!up?.url) {
+            logger.error(`[${accountId}] 头像图片上传失败`)
+            return { success: false, error: '图片上传失败' }
+        }
+
+        const cookiesStr = CookiesManager.getCookies(accountId)
+        if (!cookiesStr) {
+            return { success: false, error: '无法获取 cookies' }
+        }
+
+        const timestamp = Date.now().toString()
+        const dataVal = JSON.stringify({ profileCode: 'avatar', profileImageUrl: up.url })
+        const h5Token = CookiesManager.getH5Token(accountId)
+        const sign = generateSign(timestamp, h5Token, dataVal)
+
+        const params = new URLSearchParams({
+            jsv: '2.7.2',
+            appKey: WS_CONFIG.SIGN_APP_KEY,
+            t: timestamp,
+            sign,
+            v: '1.0',
+            type: 'originaljson',
+            accountSite: 'xianyu',
+            dataType: 'json',
+            timeout: '20000',
+            api: 'mtop.idle.wx.user.profile.update'
+        })
+
+        const res = await fetch(`${API_ENDPOINTS.USER_PROFILE_UPDATE}?${params}`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://www.goofish.com',
+                'referer': 'https://www.goofish.com/',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'cookie': cookiesStr
+            },
+            body: `data=${encodeURIComponent(dataVal)}`
+        })
+
+        CookiesManager.handleResponseCookies(accountId, res)
+
+        const json = await res.json()
+        if (json?.ret?.some((r: string) => r.includes('SUCCESS'))) {
+            logger.info(`[${accountId}] 头像修改成功: ${up.url}`)
+            return { success: true, avatar: up.url }
+        }
+
+        const errMsg = json?.ret?.[0] || '修改失败'
+        logger.warn(`[${accountId}] 头像修改失败: ${JSON.stringify(json?.ret)}`)
+        return { success: false, error: errMsg }
+    } catch (e) {
+        logger.error(`[${accountId}] 头像修改异常: ${e}`)
+        return { success: false, error: '修改异常' }
+    }
 }

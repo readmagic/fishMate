@@ -21,8 +21,13 @@ export interface UploadResult {
 
 /**
  * 上传本地图片到闲鱼 CDN，返回 url + 尺寸
+ * @param appKey 业务 appkey：聊天/商品图用 xy_chat（默认），头像用 fleamarket
  */
-export async function uploadImage(accountId: string, filePath: string): Promise<UploadResult | null> {
+export async function uploadImage(
+    accountId: string,
+    filePath: string,
+    appKey: 'xy_chat' | 'fleamarket' = 'xy_chat'
+): Promise<UploadResult | null> {
     const cookiesStr = CookiesManager.getCookies(accountId)
     if (!cookiesStr) {
         logger.error(`[${accountId}] 无法获取 cookies，无法上传图片`)
@@ -51,7 +56,7 @@ export async function uploadImage(accountId: string, filePath: string): Promise<
         Buffer.from(`\r\n--${boundary}--\r\n`)
     ])
 
-    const url = `${UPLOAD_URL}?floderId=0&appkey=xy_chat&_input_charset=utf-8`
+    const url = `${UPLOAD_URL}?floderId=0&appkey=${appKey}&_input_charset=utf-8`
     try {
         const res = await fetch(url, {
             method: 'POST',

@@ -9,7 +9,8 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   UserOutlined,
-  QrcodeOutlined
+  QrcodeOutlined,
+  PictureOutlined
 } from '@ant-design/icons-vue'
 import { accountService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
@@ -23,6 +24,7 @@ const submitting = ref(false)
 const qrLoading = ref(false)
 const refreshingId = ref<string | null>(null)
 const startingId = ref<string | null>(null)
+const avatarUploading = ref<string | null>(null)
 const editingId = ref<string | null>(null)
 const form = ref<{ remark: string }>({ remark: '' })
 
@@ -116,6 +118,20 @@ async function onRefreshInfo(id: string) {
     else message.error(res.error || '刷新失败')
   } finally {
     refreshingId.value = null
+  }
+}
+async function onUpdateAvatar(id: string) {
+  avatarUploading.value = id
+  try {
+    const res = await accountService.updateAvatar(id)
+    if (res.success) {
+      message.success('头像已更新')
+      await loadData()
+    } else if (res.error && res.error !== '已取消') {
+      message.error(res.error)
+    }
+  } finally {
+    avatarUploading.value = null
   }
 }
 async function onStart(id: string) {
@@ -249,6 +265,10 @@ onUnmounted(() => {
               <a-button :loading="refreshingId === editingId" @click="onRefreshInfo(editingId)">
                 <template #icon><ReloadOutlined /></template>
                 刷新信息
+              </a-button>
+              <a-button :loading="avatarUploading === editingId" @click="onUpdateAvatar(editingId)">
+                <template #icon><PictureOutlined /></template>
+                修改头像
               </a-button>
               <a-button v-if="!isConnected(editingId)" type="primary" :loading="startingId === editingId" @click="onStart(editingId)">
                 <template #icon><PlayCircleOutlined /></template>

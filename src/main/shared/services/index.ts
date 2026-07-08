@@ -39,7 +39,8 @@ export {
     fetchUserHead,
     fetchLoginUserId,
     fetchUserProfile,
-    fetchUserInfo
+    fetchUserInfo,
+    updateAccountAvatar
 } from './user.service.js'
 
 // 订单服务

@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, session } from 'electron'
+import { ipcMain, BrowserWindow, session, dialog } from 'electron'
 import { createLogger } from '../shared/core/logger.js'
 import { parseCookies } from '../shared/utils/cookies.js'
 import {
@@ -10,7 +10,7 @@ import {
     getAccountStatus,
     updateAccountUserInfo
 } from '../shared/db/index.js'
-import { fetchUserInfo } from '../shared/services/index.js'
+import { fetchUserInfo, updateAccountAvatar } from '../shared/services/index.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
 
 const logger = createLogger('IPC:Account')
@@ -97,6 +97,31 @@ export function registerAccountIPC(cm: ClientManager) {
             return { success: true, userInfo }
         }
         return { success: false, error: 'Failed to fetch user info' }
+    })
+
+    // 修改账号头像：弹文件框选图 → 上传到闲鱼 CDN(fleamarket) → 调 mtop.idle.wx.user.profile.update 提交 → 同步本地
+    ipcMain.handle('account:updateAvatar', async (_e, { id }) => {
+        const account = getAccount(id)
+        if (!account) return { success: false, error: 'Account not found' }
+
+        const result = await dialog.showOpenDialog({
+            title: '选择头像图片',
+            properties: ['openFile'],
+            filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+        })
+        if (result.canceled || !result.filePaths.length) {
+            return { success: false, error: '已取消' }
+        }
+
+        const r = await updateAccountAvatar(id, result.filePaths[0])
+        if (r.success) {
+            // 提交成功后重新拉取用户信息，同步规范的展示头像 URL
+            const userInfo = await fetchUserInfo(id)
+            if (userInfo) {
+                updateAccountUserInfo(id, userInfo.displayName, userInfo.avatar)
+            }
+        }
+        return r
     })
 
     ipcMain.handle('account:delete', async (_e, { id }) => {
