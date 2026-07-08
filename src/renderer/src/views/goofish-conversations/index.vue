@@ -6,7 +6,7 @@ import {
   SendOutlined,
   SmileOutlined,
   PictureOutlined,
-  ScissorOutlined,
+  PaperClipOutlined,
   SoundOutlined,
   EnvironmentOutlined,
   FileTextOutlined,
@@ -250,6 +250,9 @@ function isActiveConv(conv: Conversation) {
 // 选中会话或其 itemId 变化时，匹配对应商品
 watch(() => selected.value?.itemId, () => loadMatchedItem())
 
+// 切换会话时清空粘贴图片
+watch(selected, () => { pendingImage.value = null })
+
 function onContextMenu(key: string, conv: Conversation) {
   if (key === 'pin') pinConv(conv)
   else if (key === 'hide') hideConv(conv)
@@ -322,33 +325,46 @@ function confirmDelete(conv: Conversation) {
 async function send() {
   const text = draft.value.trim()
   const conv = selected.value
-  if (!text || !conv) return
+  if ((!text && !pendingImage.value) || !conv) return
   sending.value = true
   try {
-    const res = await conversationService.sendMessage(conv.accountId, conv.chatId, conv.userId, text)
-    if (res.success) {
-      // 乐观追加到本地消息列表
-      const now = new Date()
-      const ts = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
-      const outMsg: ConversationMessage = {
-        id: Date.now(),
-        senderId: 'me',
-        senderName: '我',
-        content: text,
-        msgTime: ts,
-        timestamp: Date.now(),
-        direction: 'out',
-        contentType: 1
+    // 先发送粘贴图片
+    if (pendingImage.value) {
+      const pi = pendingImage.value
+      const imgRes = await conversationService.sendImageBuffer(conv.accountId, conv.chatId, conv.userId, pi.base64, pi.ext)
+      if (imgRes.success) {
+        pushOutMsg('[图片]', 2)
+        clearCurrentUnread()
+        pendingImage.value = null
+      } else {
+        message.error(imgRes.error || '图片发送失败')
+        return // 图片发送失败则不继续
       }
-      conv.messages = [...(conv.messages || []), outMsg]
-      conv.lastMessage = text
-      conv.lastTime = Date.now()
-      draft.value = ''
-      clearCurrentUnread()
-      await nextTick()
-      scrollToBottom()
-    } else {
-      message.error(res.error || '发送失败')
+    }
+    // 再发送文本（可能仅图片无文本）
+    if (text) {
+      const res = await conversationService.sendMessage(conv.accountId, conv.chatId, conv.userId, text)
+      if (res.success) {
+        const outMsg: ConversationMessage = {
+          id: Date.now(),
+          senderId: 'me',
+          senderName: '我',
+          content: text,
+          msgTime: nowTs(),
+          timestamp: Date.now(),
+          direction: 'out',
+          contentType: 1
+        }
+        conv.messages = [...(conv.messages || []), outMsg]
+        conv.lastMessage = text
+        conv.lastTime = Date.now()
+        draft.value = ''
+        clearCurrentUnread()
+        await nextTick()
+        scrollToBottom()
+      } else {
+        message.error(res.error || '发送失败')
+      }
     }
   } catch {
     message.error('发送失败')
@@ -365,7 +381,12 @@ const webviewUrl = ref('')
 const webviewTitle = ref('')
 const wvRef = ref<any>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
-const loadingAction = ref<'image' | 'screen' | null>(null)
+const docFileInputRef = ref<HTMLInputElement | null>(null)
+const loadingAction = ref<'image' | 'file' | null>(null)
+
+// 粘贴图片待发送状态：dataUrl 用于缩略预览，base64 + ext 用于 IPC 发送
+interface PendingImage { dataUrl: string; base64: string; ext: string }
+const pendingImage = ref<PendingImage | null>(null)
 
 // 反检测脚本：伪造 navigator 全套属性 + window.chrome + WebGL 指纹，规避闲鱼滑动验证
 // （从 goofish-goods 详情 webview 同步，保持商品页登录态加载一致）
@@ -554,16 +575,54 @@ async function onPickImage(e: Event) {
   }
 }
 
-async function onCaptureScreen() {
+function triggerPickFile() {
+  docFileInputRef.value?.click()
+}
+
+async function onPickFile(e: Event) {
   const conv = selected.value
-  if (!conv) return
-  loadingAction.value = 'screen'
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!conv || !file) return
+  ;(e.target as HTMLInputElement).value = ''
+  loadingAction.value = 'file'
   try {
-    const res = await conversationService.captureScreen(conv.accountId, conv.chatId, conv.userId)
-    if (res.success) { pushOutMsg('[截图]', 2); clearCurrentUnread() }
-    else message.error(res.error || '截图失败')
+    const filePath = window.api.getPathForFile(file)
+    if (!filePath) { message.error('无法获取文件路径'); return }
+    const res = await conversationService.sendFileUrl(conv.accountId, conv.chatId, conv.userId, filePath)
+    if (res.success) {
+      const text = `[文件] ${res.filename || file.name} ${res.url}`
+      pushOutMsg(text, 1)
+      clearCurrentUnread()
+    } else {
+      message.error(res.error || '文件发送失败')
+    }
+  } catch {
+    message.error('文件发送失败')
   } finally {
     loadingAction.value = null
+  }
+}
+
+// 粘贴图片处理器：检测剪贴板中的图片，阻止 contenteditable 默认插入 HTML
+function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault()
+      const blob = item.getAsFile()
+      if (!blob) continue
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        // dataUrl 格式: "data:image/png;base64,xxxxx" → 提取纯 base64
+        const match = dataUrl.match(/^data:(image\/\w+);base64,(.+)$/)
+        if (!match) return
+        pendingImage.value = { dataUrl, base64: match[2], ext: match[1] }
+      }
+      reader.readAsDataURL(blob)
+      return // 只处理第一张图片
+    }
   }
 }
 
@@ -885,6 +944,7 @@ function formatFileSize(bytes: any): string {
 
         <div class="chat-input-bar">
           <input ref="fileInputRef" type="file" accept="image/*" style="display:none" @change="onPickImage" />
+          <input ref="docFileInputRef" type="file" style="display:none" @change="onPickFile" />
           <div class="chat-input-card">
             <div class="chat-input-toolbar">
               <a-popover v-model:open="stickerVisible" trigger="click" placement="topLeft">
@@ -908,8 +968,8 @@ function formatFileSize(bytes: any): string {
               <a-button class="ci-icon-btn" shape="circle" type="text" :loading="loadingAction === 'image'" :disabled="!selected" title="图片" @click="triggerPickImage">
                 <template #icon><PictureOutlined /></template>
               </a-button>
-              <a-button class="ci-icon-btn" shape="circle" type="text" :loading="loadingAction === 'screen'" :disabled="!selected" title="截屏" @click="onCaptureScreen">
-                <template #icon><ScissorOutlined /></template>
+              <a-button class="ci-icon-btn" shape="circle" type="text" :loading="loadingAction === 'file'" :disabled="!selected" title="文件" @click="triggerPickFile">
+                <template #icon><PaperClipOutlined /></template>
               </a-button>
             </div>
             <div
@@ -921,7 +981,13 @@ function formatFileSize(bytes: any): string {
               :contenteditable="!sending"
               @input="onInputChange"
               @keydown="onInputKeyDown"
+              @paste="onPaste"
             ></div>
+            <!-- 粘贴图片缩略预览 -->
+            <div v-if="pendingImage" class="paste-preview">
+              <img :src="pendingImage.dataUrl" />
+              <button class="paste-preview-close" @click="pendingImage = null">×</button>
+            </div>
           </div>
           <button class="ci-send-btn" :disabled="sending || !selected" @click="send">
             <span v-if="sending" class="ci-spin"></span>
@@ -1460,6 +1526,34 @@ function formatFileSize(bytes: any): string {
 }
 .ci-icon-btn:disabled {
   opacity: 0.5;
+}
+/* 粘贴图片缩略预览 */
+.paste-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #f5f5f5;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.paste-preview img {
+  max-width: 80px;
+  max-height: 80px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.paste-preview-close {
+  background: none;
+  border: none;
+  color: #999;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.paste-preview-close:hover {
+  color: #333;
 }
 /* 多行输入域（contenteditable） */
 .chat-input-field {

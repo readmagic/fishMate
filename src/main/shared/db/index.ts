@@ -91,7 +91,9 @@ export {
     getSettings,
     getAISettings,
     saveAISettings,
-    AI_SETTINGS_KEYS
+    AI_SETTINGS_KEYS,
+    getStorageToken,
+    saveStorageToken
 } from './settings.repository.js'
 
 export {

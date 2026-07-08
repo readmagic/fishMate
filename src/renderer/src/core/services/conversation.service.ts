@@ -26,8 +26,11 @@ export const conversationService = {
   sendImage(accountId: string, chatId: string, toUserId: string, filePath: string) {
     return invoke<{ success: boolean; error?: string }>('message:sendImage', { accountId, chatId, toUserId, filePath })
   },
-  captureScreen(accountId: string, chatId: string, toUserId: string) {
-    return invoke<{ success: boolean; error?: string }>('message:captureScreen', { accountId, chatId, toUserId })
+  sendImageBuffer(accountId: string, chatId: string, toUserId: string, base64: string, ext: string) {
+    return invoke<{ success: boolean; error?: string }>('message:sendImageBuffer', { accountId, chatId, toUserId, base64, ext })
+  },
+  sendFileUrl(accountId: string, chatId: string, toUserId: string, filePath: string) {
+    return invoke<{ success: boolean; error?: string; url?: string; filename?: string }>('message:sendFile', { accountId, chatId, toUserId, filePath })
   },
   setInChat(inChat: boolean) {
     return invoke('message:setInChat', { inChat })

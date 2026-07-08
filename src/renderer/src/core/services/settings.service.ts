@@ -26,5 +26,11 @@ export const settingsService = {
   },
   setAutoStart(enabled: boolean) {
     return invoke<boolean>('autostart:set', { enabled })
+  },
+  getStorageToken() {
+    return invoke<string>('setting:storageToken:get')
+  },
+  setStorageToken(token: string) {
+    return invoke<{ success: boolean }>('setting:storageToken:set', { token })
   }
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import { SettingOutlined, InfoCircleOutlined, CoffeeOutlined } from '@ant-design/icons-vue'
+import { SettingOutlined, InfoCircleOutlined, CoffeeOutlined, ApiOutlined } from '@ant-design/icons-vue'
 import { settingsService, type AISettings } from '@/core/services'
 import alipayQr from '@/assets/about/alipay.png'
 import wechatQr from '@/assets/about/wechat.png'
@@ -11,15 +11,39 @@ import pkg from '../../../../../package.json'
 const appVersion = `v${pkg.version}`
 
 // 当前选中的设置分类
-type Tab = 'general' | 'about'
+type Tab = 'general' | 'thirdparty' | 'about'
 const activeTab = ref<Tab>('general')
 const tabs: { key: Tab; label: string; icon: any }[] = [
   { key: 'general', label: '常规设置', icon: SettingOutlined },
+  { key: 'thirdparty', label: '第三方设置', icon: ApiOutlined },
   { key: 'about', label: '关于我们', icon: InfoCircleOutlined }
 ]
 
 const autoStart = ref(false)
 const autoStartLoading = ref(false)
+
+const storageToken = ref('')
+const savingToken = ref(false)
+
+async function loadStorageToken() {
+  try {
+    storageToken.value = await settingsService.getStorageToken()
+  } catch (e) {
+    console.error('获取 storage.to token 失败', e)
+  }
+}
+
+async function saveStorageToken() {
+  savingToken.value = true
+  try {
+    await settingsService.setStorageToken(storageToken.value)
+    message.success('Storage.to 设置已保存')
+  } catch {
+    message.error('保存 Storage.to 设置失败')
+  } finally {
+    savingToken.value = false
+  }
+}
 
 async function loadAutoStart() {
   try {
@@ -94,6 +118,7 @@ onMounted(() => {
   // TODO: AI 设置加载暂不启用，随 AI 服务配置模块一同恢复
   // loadAISettings()
   loadAutoStart()
+  loadStorageToken()
 })
 </script>
 
@@ -134,6 +159,23 @@ onMounted(() => {
         <!-- TODO: AI 服务配置模块暂不启用，待自动回复模块恢复后启用
         <a-card class="setting-card" title="AI 服务配置"> ... </a-card>
         -->
+      </div>
+
+      <!-- 第三方设置 -->
+      <div v-show="activeTab === 'thirdparty'" class="tab-pane">
+        <a-card class="setting-card" title="Storage.to 配置">
+          <p class="hint" style="margin-bottom: 16px">Storage.to 是免费文件临时存储服务，用于在聊天中发送文件链接。文件默认有效期 3 天。</p>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-title">API Token</div>
+              <div class="hint">可选。匿名上传无需 Token；填入 Token 可关联账户、解锁高级功能</div>
+            </div>
+            <a-input-password v-model:value="storageToken" placeholder="留空则匿名上传" style="max-width: 300px" />
+          </div>
+          <div style="margin-top: 16px; text-align: right">
+            <a-button type="primary" :loading="savingToken" @click="saveStorageToken">保存</a-button>
+          </div>
+        </a-card>
       </div>
 
       <!-- 关于我们 -->
@@ -229,12 +271,19 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
 }
-.autostart-info {
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.autostart-info,
+.setting-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.autostart-title {
+.autostart-title,
+.setting-title {
   font-size: 14px;
   color: var(--wm-text);
 }

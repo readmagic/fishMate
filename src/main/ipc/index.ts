@@ -10,6 +10,7 @@ import { registerWorkflowIPC } from './workflows.js'
 import { registerLogIPC } from './logs.js'
 import { registerStatusIPC } from './status.js'
 import { registerPushIPC } from './push.js'
+import { registerSettingsIPC } from './settings.js'
 import { ENV } from '../shared/core/constants.js'
 import { registerDevMessageIPC } from './dev-messages.js'
 
@@ -25,6 +26,7 @@ export function registerAllIPC(cm: ClientManager) {
     registerLogIPC()
     registerStatusIPC(cm)
     registerPushIPC(cm)
+    registerSettingsIPC()
     if (ENV.IS_DEV) {
         registerDevMessageIPC()
     }

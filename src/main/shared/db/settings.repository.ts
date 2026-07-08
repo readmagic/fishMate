@@ -80,3 +80,14 @@ export function saveAISettings(settings: {
         setSetting(AI_SETTINGS_KEYS.SYSTEM_PROMPT, settings.systemPrompt)
     }
 }
+
+// Storage.to API Token 相关 key
+export const STORAGE_TOKEN_KEY = 'storage_to_api_token'
+
+export function getStorageToken(): string {
+    return getSetting(STORAGE_TOKEN_KEY) || ''
+}
+
+export function saveStorageToken(token: string): void {
+    setSetting(STORAGE_TOKEN_KEY, token)
+}
