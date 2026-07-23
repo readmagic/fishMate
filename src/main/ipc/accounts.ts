@@ -10,7 +10,7 @@ import {
     getAccountStatus,
     updateAccountUserInfo
 } from '../shared/db/index.js'
-import { fetchUserInfo, updateAccountAvatar } from '../shared/services/index.js'
+import { fetchUserInfo, updateAccountAvatar, updateAccountNickname } from '../shared/services/index.js'
 import type { ClientManager } from '../shared/websocket/client.manager.js'
 
 const logger = createLogger('IPC:Account')
@@ -107,7 +107,7 @@ export function registerAccountIPC(cm: ClientManager) {
         const result = await dialog.showOpenDialog({
             title: '选择头像图片',
             properties: ['openFile'],
-            filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+            filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }]
         })
         if (result.canceled || !result.filePaths.length) {
             return { success: false, error: '已取消' }
@@ -116,6 +116,21 @@ export function registerAccountIPC(cm: ClientManager) {
         const r = await updateAccountAvatar(id, result.filePaths[0])
         if (r.success) {
             // 提交成功后重新拉取用户信息，同步规范的展示头像 URL
+            const userInfo = await fetchUserInfo(id)
+            if (userInfo) {
+                updateAccountUserInfo(id, userInfo.displayName, userInfo.avatar)
+            }
+        }
+        return r
+    })
+
+    // 修改账号昵称：调 mtop.idle.wx.user.profile.update 提交 → 同步本地
+    ipcMain.handle('account:updateNickname', async (_e, { id, nickname }) => {
+        const account = getAccount(id)
+        if (!account) return { success: false, error: 'Account not found' }
+
+        const r = await updateAccountNickname(id, nickname)
+        if (r.success) {
             const userInfo = await fetchUserInfo(id)
             if (userInfo) {
                 updateAccountUserInfo(id, userInfo.displayName, userInfo.avatar)

@@ -30,6 +30,9 @@ export const accountService = {
   updateAvatar(id: string) {
     return invoke<{ success: boolean; error?: string }>('account:updateAvatar', { id })
   },
+  updateNickname(id: string, nickname: string) {
+    return invoke<{ success: boolean; error?: string }>('account:updateNickname', { id, nickname })
+  },
   loginQr(): Promise<{ success: boolean; accountId?: string; error?: string }> {
     return invoke('account:loginQr')
   }

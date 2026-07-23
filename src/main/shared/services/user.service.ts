@@ -277,6 +277,69 @@ export async function fetchUserInfo(accountId: string): Promise<AccountUserInfo 
 }
 
 /**
+ * 修改账号昵称
+ * 调用 mtop.idle.wx.user.profile.update，profileCode 为 snsNick
+ * 成功后由调用方调 fetchUserInfo 同步本地缓存
+ */
+export async function updateAccountNickname(
+    accountId: string,
+    nickname: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const cookiesStr = CookiesManager.getCookies(accountId)
+        if (!cookiesStr) {
+            return { success: false, error: '无法获取 cookies' }
+        }
+
+        const timestamp = Date.now().toString()
+        const dataVal = JSON.stringify({ profileCode: 'snsNick', snsNick: nickname })
+        const h5Token = CookiesManager.getH5Token(accountId)
+        const sign = generateSign(timestamp, h5Token, dataVal)
+
+        const params = new URLSearchParams({
+            jsv: '2.7.2',
+            appKey: WS_CONFIG.SIGN_APP_KEY,
+            t: timestamp,
+            sign,
+            v: '1.0',
+            type: 'originaljson',
+            accountSite: 'xianyu',
+            dataType: 'json',
+            timeout: '20000',
+            api: 'mtop.idle.wx.user.profile.update'
+        })
+
+        const res = await fetch(`${API_ENDPOINTS.USER_PROFILE_UPDATE}?${params}`, {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://www.goofish.com',
+                'referer': 'https://www.goofish.com/',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'cookie': cookiesStr
+            },
+            body: `data=${encodeURIComponent(dataVal)}`
+        })
+
+        CookiesManager.handleResponseCookies(accountId, res)
+
+        const json = await res.json()
+        if (json?.ret?.some((r: string) => r.includes('SUCCESS'))) {
+            logger.info(`[${accountId}] 昵称修改成功: ${nickname}`)
+            return { success: true }
+        }
+
+        const errMsg = json?.ret?.[0] || '修改失败'
+        logger.warn(`[${accountId}] 昵称修改失败: ${JSON.stringify(json?.ret)}`)
+        return { success: false, error: errMsg }
+    } catch (e) {
+        logger.error(`[${accountId}] 昵称修改异常: ${e}`)
+        return { success: false, error: '修改异常' }
+    }
+}
+
+/**
  * 修改账号头像
  * 流程（移植自闲鱼小程序 _sub-package-other_）：
  *   1. 上传图片到 stream-upload（appkey=fleamarket）拿 CDN URL

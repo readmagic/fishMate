@@ -40,7 +40,8 @@ export {
     fetchLoginUserId,
     fetchUserProfile,
     fetchUserInfo,
-    updateAccountAvatar
+    updateAccountAvatar,
+    updateAccountNickname
 } from './user.service.js'
 
 // 订单服务

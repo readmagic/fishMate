@@ -44,6 +44,7 @@ export async function uploadImage(
     // 简单 MIME 推断
     const mime = fileName.toLowerCase().endsWith('.png') ? 'image/png'
         : fileName.toLowerCase().endsWith('.webp') ? 'image/webp'
+        : fileName.toLowerCase().endsWith('.gif') ? 'image/gif'
         : 'image/jpeg'
 
     const body = Buffer.concat([

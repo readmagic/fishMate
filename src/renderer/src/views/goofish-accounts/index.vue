@@ -10,7 +10,8 @@ import {
   ReloadOutlined,
   UserOutlined,
   QrcodeOutlined,
-  PictureOutlined
+  PictureOutlined,
+  FormOutlined
 } from '@ant-design/icons-vue'
 import { accountService } from '@/core/services'
 import { usePushStore } from '@/core/stores/usePushStore'
@@ -25,6 +26,9 @@ const qrLoading = ref(false)
 const refreshingId = ref<string | null>(null)
 const startingId = ref<string | null>(null)
 const avatarUploading = ref<string | null>(null)
+const nicknameEditing = ref(false)
+const nicknameModalVisible = ref(false)
+const newNickname = ref('')
 const editingId = ref<string | null>(null)
 const form = ref<{ remark: string }>({ remark: '' })
 
@@ -132,6 +136,29 @@ async function onUpdateAvatar(id: string) {
     }
   } finally {
     avatarUploading.value = null
+  }
+}
+function onUpdateNicknameClick() {
+  if (!selectedAccount.value) return
+  newNickname.value = selectedAccount.value.nickname || ''
+  nicknameModalVisible.value = true
+}
+async function onSubmitNickname() {
+  if (!editingId.value || !newNickname.value.trim()) return
+  nicknameEditing.value = true
+  try {
+    const res = await accountService.updateNickname(editingId.value, newNickname.value.trim())
+    if (res.success) {
+      message.success('昵称修改成功')
+      nicknameModalVisible.value = false
+      await loadData()
+    } else {
+      message.error(res.error || '修改失败')
+    }
+  } catch (e: unknown) {
+    message.error(e instanceof Error ? e.message : '修改失败')
+  } finally {
+    nicknameEditing.value = false
   }
 }
 async function onStart(id: string) {
@@ -270,6 +297,10 @@ onUnmounted(() => {
                 <template #icon><PictureOutlined /></template>
                 修改头像
               </a-button>
+              <a-button @click="onUpdateNicknameClick">
+                <template #icon><FormOutlined /></template>
+                修改昵称
+              </a-button>
               <a-button v-if="!isConnected(editingId)" type="primary" :loading="startingId === editingId" @click="onStart(editingId)">
                 <template #icon><PlayCircleOutlined /></template>
                 在线
@@ -292,6 +323,25 @@ onUnmounted(() => {
       </div>
     </template>
   </TwoPaneLayout>
+  <a-modal
+    v-model:open="nicknameModalVisible"
+    title="修改昵称"
+    :confirm-loading="nicknameEditing"
+    @ok="onSubmitNickname"
+    ok-text="确定"
+    cancel-text="取消"
+  >
+    <a-form layout="vertical">
+      <a-form-item label="新昵称">
+        <a-input
+          v-model:value="newNickname"
+          placeholder="请输入新的昵称"
+          :maxlength="20"
+          @press-enter="onSubmitNickname"
+        />
+      </a-form-item>
+    </a-form>
+  </a-modal>
 </template>
 
 <style scoped>
